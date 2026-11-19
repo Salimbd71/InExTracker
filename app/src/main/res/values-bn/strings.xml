@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">হিসাব খাতা</string>
+    <string name="app_tagline">স্মার্ট আয়, ব্যয় ও দেনা-পাওনা ট্র্যাকার</string>
+    
+    <!-- Navigation -->
+    <string name="nav_dashboard">ড্যাশবোর্ড</string>
+    <string name="nav_transactions">লেনদেন</string>
+    <string name="nav_debt">দেনা-পাওনা</string>
+    <string name="nav_reports">রিপোর্ট</string>
+    <string name="nav_profile">প্রোফাইল</string>
+    
+    <!-- Common Actions -->
+    <string name="action_add">যোগ করুন</string>
+    <string name="action_save">সংরক্ষণ</string>
+    <string name="action_cancel">বাতিল</string>
+    <string name="action_delete">মুছুন</string>
+    <string name="action_edit">এডিট</string>
+    <string name="action_search">খুঁজুন…</string>
+    <string name="action_filter">ফিল্টার</string>
+    <string name="action_export_csv">CSV এক্সপোর্ট</string>
+    <string name="action_export_pdf">রিপোর্ট এক্সপোর্ট</string>
+    <string name="action_sync_now">এখনই সিঙ্ক করুন</string>
+    <string name="action_sign_in_google">Google দিয়ে লগইন</string>
+    <string name="action_sign_out">লগআউট</string>
+    <string name="action_continue_guest">গেস্ট হিসেবে চালান</string>
+    
+    <!-- Transaction Types -->
+    <string name="type_income">আয়</string>
+    <string name="type_expense">ব্যয়</string>
+    <string name="type_debt">দেনা / ঋণ</string>
+    <string name="type_receivable">পাওনা টাকা</string>
+    <string name="type_payable">দেনা টাকা</string>
+    
+    <!-- Dashboard Stats -->
+    <string name="total_balance">বর্তমান ব্যালেন্স</string>
+    <string name="total_income">মোট আয়</string>
+    <string name="total_expense">মোট ব্যয়</string>
+    <string name="total_receivable">মোট পাওনা</string>
+    <string name="total_payable">মোট দেনা</string>
+    <string name="today_income">আজকের আয়</string>
+    <string name="today_expense">আজকের ব্যয়</string>
+    <string name="this_month_income">চলতি মাসের আয়</string>
+    <string name="this_month_expense">চলতি মাসের ব্যয়</string>
+    
+    <!-- Sync States -->
+    <string name="sync_synced">সিঙ্ক সম্পন্ন ✓</string>
+    <string name="sync_syncing">সিঙ্ক হচ্ছে…</string>
+    <string name="sync_offline">অফলাইন মোড</string>
+    <string name="sync_failed">সিঙ্ক ব্যর্থ হয়েছে</string>
+    
+    <!-- Debt Statuses -->
+    <string name="status_pending">বাকি</string>
+    <string name="status_partially_paid">আংশিক পরিশোধ</string>
+    <string name="status_paid">পরিশোধিত</string>
+    <string name="status_overdue">মেয়াদোত্তীর্ণ</string>
+    
+    <!-- Payment Methods -->
+    <string name="wallet_cash">নগদ (Cash)</string>
+    <string name="wallet_bank">ব্যাংক (Bank)</string>
+    <string name="wallet_bkash">বিকাশ (bKash)</string>
+    <string name="wallet_nagad">নগদ (Nagad)</string>
+    <string name="wallet_card">কার্ড (Card)</string>
+    <string name="wallet_other">অন্যান্য</string>
+</resources>

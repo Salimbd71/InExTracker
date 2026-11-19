@@ -1,0 +1,6 @@
+{
+  "name": "InEx Tracker",
+  "description": "Income & Expense Tracker with Firebase Realtime Database sync, Google Authentication, Debt management, Budgets, and analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

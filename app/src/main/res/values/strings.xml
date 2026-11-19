@@ -1,0 +1,64 @@
+<resources>
+    <string name="app_name">InEx Tracker</string>
+    <string name="app_tagline">Smart Income &amp; Expense Realtime Tracker</string>
+    
+    <!-- Navigation -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_transactions">Transactions</string>
+    <string name="nav_debt">Debt Khata</string>
+    <string name="nav_reports">Reports</string>
+    <string name="nav_profile">Profile</string>
+    
+    <!-- Common Actions -->
+    <string name="action_add">Add</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_search">Search…</string>
+    <string name="action_filter">Filter</string>
+    <string name="action_export_csv">Export CSV</string>
+    <string name="action_export_pdf">Export Report</string>
+    <string name="action_sync_now">Sync Now</string>
+    <string name="action_sign_in_google">Sign in with Google</string>
+    <string name="action_sign_out">Sign Out</string>
+    <string name="action_continue_guest">Continue as Guest</string>
+    
+    <!-- Transaction Types -->
+    <string name="type_income">Income</string>
+    <string name="type_expense">Expense</string>
+    <string name="type_debt">Debt / Loan</string>
+    <string name="type_receivable">Money to Receive (পাওনা)</string>
+    <string name="type_payable">Money to Pay (দেনা)</string>
+    
+    <!-- Dashboard Stats -->
+    <string name="total_balance">Current Balance</string>
+    <string name="total_income">Total Income</string>
+    <string name="total_expense">Total Expense</string>
+    <string name="total_receivable">Total Receivable (পাওনা)</string>
+    <string name="total_payable">Total Payable (দেনা)</string>
+    <string name="today_income">Today\'s Income</string>
+    <string name="today_expense">Today\'s Expense</string>
+    <string name="this_month_income">This Month Income</string>
+    <string name="this_month_expense">This Month Expense</string>
+    
+    <!-- Sync States -->
+    <string name="sync_synced">Synced ✓</string>
+    <string name="sync_syncing">Syncing…</string>
+    <string name="sync_offline">Offline Mode</string>
+    <string name="sync_failed">Sync Failed (Will retry)</string>
+    
+    <!-- Debt Statuses -->
+    <string name="status_pending">Pending</string>
+    <string name="status_partially_paid">Partially Paid</string>
+    <string name="status_paid">Paid</string>
+    <string name="status_overdue">Overdue</string>
+    
+    <!-- Payment Methods -->
+    <string name="wallet_cash">Cash</string>
+    <string name="wallet_bank">Bank</string>
+    <string name="wallet_bkash">bKash</string>
+    <string name="wallet_nagad">Nagad</string>
+    <string name="wallet_card">Card</string>
+    <string name="wallet_other">Other</string>
+</resources>

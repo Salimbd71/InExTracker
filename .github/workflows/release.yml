@@ -1,0 +1,156 @@
+name: Build & Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag/version (e.g. v1.0.0). Leave empty for auto tag'
+        required: false
+        default: ''
+      run_tests:
+        description: 'Run unit tests before building APK'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Determine release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+          elif [[ -n "${{ inputs.release_tag }}" ]]; then
+            TAG_NAME="${{ inputs.release_tag }}"
+          else
+            TAG_NAME="v1.0.${{ github.run_number }}"
+          fi
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure google-services.json (if secret provided)
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [[ -n "$GOOGLE_SERVICES_JSON" && ! -f "app/google-services.json" ]]; then
+            if [[ "$GOOGLE_SERVICES_JSON" == \{* ]]; then
+              printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            else
+              printf '%s' "$GOOGLE_SERVICES_JSON" | base64 --decode > app/google-services.json
+            fi
+            echo "created_google_services=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure release signing keystore
+        id: keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          KEYSTORE_FILE="${{ github.workspace }}/my-upload-key.jks"
+          if [[ -n "$KEYSTORE_BASE64" ]]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+            echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "used_temp_keystore=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::KEYSTORE_BASE64 secret not found. Generating a temporary signing keystore for this build. Configure KEYSTORE_BASE64, STORE_PASSWORD, and KEY_PASSWORD secrets for production releases."
+            TEMP_PASS="inextracker-ci-temp"
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE_FILE" \
+              -alias upload \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass "$TEMP_PASS" \
+              -keypass "$TEMP_PASS" \
+              -dname "CN=InEx Tracker, OU=Mobile, O=SLM, L=Dhaka, S=Dhaka, C=BD"
+            echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=$TEMP_PASS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$TEMP_PASS" >> "$GITHUB_ENV"
+            echo "used_temp_keystore=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run unit tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_tests }}
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - name: Build Release APK
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Prepare release APK
+        id: apk
+        shell: bash
+        run: |
+          mkdir -p release-apks
+          APK_SOURCE="app/build/outputs/apk/release/app-release.apk"
+          if [[ ! -f "$APK_SOURCE" ]]; then
+            echo "Error: Release APK not found at $APK_SOURCE"
+            exit 1
+          fi
+          APK_NAME="InExTracker-${{ steps.meta.outputs.tag_name }}.apk"
+          cp "$APK_SOURCE" "release-apks/${APK_NAME}"
+          echo "apk_path=release-apks/${APK_NAME}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.apk_name }}
+          path: ${{ steps.apk.outputs.apk_path }}
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: InEx Tracker ${{ steps.meta.outputs.tag_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ### InEx Tracker (${{ steps.meta.outputs.tag_name }})
+            Download `${{ steps.apk.outputs.apk_name }}` from the Assets section below.
+            ${{ steps.keystore.outputs.used_temp_keystore == 'true' && '> **Note:** Signed with a temporary CI keystore. Add `KEYSTORE_BASE64`, `STORE_PASSWORD`, and `KEY_PASSWORD` in repository secrets for consistent release signing.' || '' }}
+          files: |
+            ${{ steps.apk.outputs.apk_path }}
+
+      - name: Clean up temporary secrets
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${{ github.workspace }}/my-upload-key.jks"
+          if [[ "${{ env.created_google_services }}" == "true" ]]; then
+            rm -f app/google-services.json
+          fi
