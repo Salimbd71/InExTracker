@@ -35,7 +35,59 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        shell: bash
+        run: |
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [[ ! -d "$SDK_DIR" ]]; then
+            SDK_DIR="$HOME/Android/Sdk"
+            mkdir -p "$SDK_DIR"
+          fi
+          if [[ ! -w "$SDK_DIR" ]] && command -v sudo >/dev/null 2>&1; then
+            sudo chown -R "$(id -u):$(id -g)" "$SDK_DIR" || true
+          fi
+
+          SDKMANAGER=""
+          for candidate in \
+            "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" \
+            "$SDK_DIR/cmdline-tools/bin/sdkmanager" \
+            "$SDK_DIR/tools/bin/sdkmanager"; do
+            if [[ -x "$candidate" ]]; then
+              SDKMANAGER="$candidate"
+              break
+            fi
+          done
+
+          if [[ -z "$SDKMANAGER" ]]; then
+            SDKMANAGER=$(find "$SDK_DIR/cmdline-tools" -maxdepth 3 -type f -name sdkmanager 2>/dev/null | head -n 1 || true)
+          fi
+
+          if [[ -z "$SDKMANAGER" ]]; then
+            echo "Android cmdline-tools not found; downloading..."
+            mkdir -p "$SDK_DIR/cmdline-tools"
+            curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o /tmp/cmdline-tools.zip
+            unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-extract
+            rm -rf "$SDK_DIR/cmdline-tools/latest"
+            mv /tmp/cmdline-tools-extract/cmdline-tools "$SDK_DIR/cmdline-tools/latest"
+            rm -rf /tmp/cmdline-tools.zip /tmp/cmdline-tools-extract
+            SDKMANAGER="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+            chmod +x "$SDKMANAGER"
+          fi
+
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "$SDK_DIR/platform-tools" >> "$GITHUB_PATH"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+          # Accept SDK licenses (both standard files and via sdkmanager)
+          mkdir -p "$SDK_DIR/licenses"
+          for hash in "24333f8a63b6825ea9c5514f83c2829b004d1fee" "d56f5187479451eabf01fb78af6dfcb131a6481e"; do
+            grep -qxF "$hash" "$SDK_DIR/licenses/android-sdk-license" 2>/dev/null || echo "$hash" >> "$SDK_DIR/licenses/android-sdk-license"
+          done
+          grep -qxF "84831b9409646a918e30573bab4c9c91346d8abd" "$SDK_DIR/licenses/android-sdk-preview-license" 2>/dev/null || echo "84831b9409646a918e30573bab4c9c91346d8abd" >> "$SDK_DIR/licenses/android-sdk-preview-license"
+          { yes || true; } | "$SDKMANAGER" --sdk_root="$SDK_DIR" --licenses >/dev/null 2>&1 || true
+
+          "$SDKMANAGER" --sdk_root="$SDK_DIR" "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          "$SDKMANAGER" --sdk_root="$SDK_DIR" "platforms;android-36.1" >/dev/null 2>&1 || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
