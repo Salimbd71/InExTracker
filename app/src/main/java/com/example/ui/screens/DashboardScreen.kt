@@ -19,48 +19,39 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.R
 import com.example.auth.AuthState
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionType
-import com.example.sync.SyncUiState
-import com.example.ui.components.AdMobBannerView
 import com.example.ui.components.CategoryDonutChart
 import com.example.ui.components.FinancialSummaryCard
 import com.example.ui.components.MonthlyBarChart
+import com.example.ui.components.PremiumAppHeader
 import com.example.ui.components.SyncStatusChip
+import com.example.ui.components.UserAvatar
 import com.example.ui.components.WalletBreakdownRow
-import com.example.ui.theme.AccentGold
+import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
 import com.example.ui.theme.PrimaryGreen
@@ -68,7 +59,6 @@ import com.example.ui.viewmodel.MainViewModel
 import com.example.utils.CurrencyUtils
 import com.example.utils.DateUtils
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     viewModel: MainViewModel,
@@ -77,62 +67,49 @@ fun DashboardScreen(
     onTransactionClick: (TransactionEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val summary by viewModel.dashboardSummary.collectAsStateWithLifecycle()
     val currencySymbol by viewModel.currencySymbol.collectAsStateWithLifecycle()
-    val recentTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
+    val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val syncState by viewModel.syncManager.syncState.collectAsStateWithLifecycle()
     val authState by viewModel.authState.collectAsStateWithLifecycle()
+
+    val recentTopFive = remember(allTransactions) { allTransactions.take(5) }
+    val userProfile = (authState as? AuthState.Authenticated)?.user
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Top App Bar
-        TopAppBar(
-            title = {
-                Column {
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = stringResource(R.string.app_tagline),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
+        PremiumAppHeader(
+            title = strings.appName,
+            subtitle = strings.appTagline,
             actions = {
                 SyncStatusChip(
                     syncState = syncState,
-                    onSyncClick = { viewModel.triggerSync() }
+                    onSyncClick = { viewModel.triggerSync() },
+                    onLightHeader = true
                 )
-                Spacer(modifier = Modifier.width(4.dp))
                 IconButton(
                     onClick = onNavigateToProfile,
                     modifier = Modifier.testTag("dashboard_profile_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = "Profile",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
+                    UserAvatar(
+                        photoUrl = userProfile?.photoUrl,
+                        displayName = userProfile?.displayName ?: strings.guestUserTitle,
+                        size = 34.dp
                     )
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            }
         )
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 90.dp, top = 8.dp),
+            contentPadding = PaddingValues(bottom = 100.dp, top = 14.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Hero Financial Card
-            item {
+            item(key = "hero_summary", contentType = "hero") {
                 FinancialSummaryCard(
                     currentBalance = summary.currentBalance,
                     totalIncome = summary.totalIncome,
@@ -144,15 +121,13 @@ fun DashboardScreen(
                 )
             }
 
-            // Quick Stats Row (Today vs This Month)
-            item {
+            item(key = "quick_stats_row", contentType = "stats_row") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Today's Stats
                     Card(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(16.dp),
@@ -161,7 +136,7 @@ fun DashboardScreen(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
-                                text = "আজকের হিসাব",
+                                text = strings.todaySummary,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -187,7 +162,6 @@ fun DashboardScreen(
                         }
                     }
 
-                    // This Month Stats
                     Card(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(16.dp),
@@ -196,7 +170,7 @@ fun DashboardScreen(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
-                                text = "চলতি মাস",
+                                text = strings.thisMonthSummary,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -224,36 +198,32 @@ fun DashboardScreen(
                 }
             }
 
-            // Wallet Balances Row
-            item {
+            item(key = "wallet_breakdown", contentType = "wallets") {
                 WalletBreakdownRow(
                     walletBalances = summary.walletBalances,
                     currencySymbol = currencySymbol
                 )
             }
 
-            // Visual Charts
-            item {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    MonthlyBarChart(
-                        income = summary.thisMonthIncome,
-                        expense = summary.thisMonthExpense,
-                        currencySymbol = currencySymbol
-                    )
-
-                    CategoryDonutChart(
-                        transactions = recentTransactions,
-                        type = TransactionType.EXPENSE,
-                        currencySymbol = currencySymbol
-                    )
-                }
+            item(key = "monthly_bar_chart", contentType = "bar_chart") {
+                MonthlyBarChart(
+                    income = summary.thisMonthIncome,
+                    expense = summary.thisMonthExpense,
+                    currencySymbol = currencySymbol,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
             }
 
-            // Recent Transactions Header
-            item {
+            item(key = "category_donut_chart", contentType = "donut_chart") {
+                CategoryDonutChart(
+                    transactions = allTransactions,
+                    type = TransactionType.EXPENSE,
+                    currencySymbol = currencySymbol,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
+            item(key = "recent_header", contentType = "section_header") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -262,14 +232,15 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "সাম্প্রতিক লেনদেন (Recent Transactions)",
+                        text = strings.recentTransactions,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     TextButton(onClick = onNavigateToTransactions) {
-                        Text("সব দেখুন", color = MaterialTheme.colorScheme.primary)
+                        Text(strings.viewAll, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(4.dp))
                         Icon(
-                            imageVector = Icons.Default.ArrowForward,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
@@ -277,9 +248,8 @@ fun DashboardScreen(
                 }
             }
 
-            // Recent Transactions List
-            if (recentTransactions.isEmpty()) {
-                item {
+            if (recentTopFive.isEmpty()) {
+                item(key = "recent_empty", contentType = "empty") {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -301,12 +271,12 @@ fun DashboardScreen(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "কোন লেনদেন রেকর্ড করা হয়নি",
+                                text = strings.noTransactionsTitle,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "নিচের (+) বাটনে চাপ দিয়ে আয় বা ব্যয় যোগ করুন",
+                                text = strings.noTransactionsHint,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -314,7 +284,11 @@ fun DashboardScreen(
                     }
                 }
             } else {
-                items(recentTransactions.take(5)) { tx ->
+                items(
+                    items = recentTopFive,
+                    key = { it.id },
+                    contentType = { "tx_item" }
+                ) { tx ->
                     TransactionItemCard(
                         transaction = tx,
                         currencySymbol = currencySymbol,
@@ -334,6 +308,15 @@ fun TransactionItemCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val lang = LocalAppLanguage.current
+    val isIncome = transaction.type == TransactionType.INCOME
+    val icon = if (isIncome) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward
+    val color = if (isIncome) IncomeGreen else ExpenseRed
+    val formattedDate = remember(transaction.date, lang) { DateUtils.formatDate(transaction.date, lang) }
+    val formattedAmount = remember(transaction.amount, currencySymbol, isIncome) {
+        (if (isIncome) "+ " else "- ") + CurrencyUtils.formatAmount(transaction.amount, currencySymbol)
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -354,10 +337,6 @@ fun TransactionItemCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                val isIncome = transaction.type == TransactionType.INCOME
-                val icon = if (isIncome) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward
-                val color = if (isIncome) IncomeGreen else ExpenseRed
-
                 Box(
                     modifier = Modifier
                         .size(42.dp)
@@ -394,7 +373,7 @@ fun TransactionItemCard(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = DateUtils.formatDate(transaction.date),
+                            text = formattedDate,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -413,15 +392,11 @@ fun TransactionItemCard(
                 }
             }
 
-            // Amount with +/- indicator
-            val prefix = if (transaction.type == TransactionType.INCOME) "+ " else "- "
-            val amountColor = if (transaction.type == TransactionType.INCOME) IncomeGreen else ExpenseRed
-
             Text(
-                text = prefix + CurrencyUtils.formatAmount(transaction.amount, currencySymbol),
+                text = formattedAmount,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = amountColor
+                color = color
             )
         }
     }

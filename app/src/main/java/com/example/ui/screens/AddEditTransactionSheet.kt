@@ -1,24 +1,20 @@
 package com.example.ui.screens
 
 import android.app.DatePickerDialog
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -29,7 +25,6 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -51,7 +47,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,17 +59,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ads.AdManager
 import com.example.data.local.entity.PaymentMethod
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionType
+import com.example.ui.components.BottomSheetKeyboardBackHandler
+import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
-import com.example.ui.theme.PrimaryGreen
 import com.example.ui.viewmodel.MainViewModel
 import com.example.utils.DateUtils
+import com.example.utils.findActivity
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,12 +86,20 @@ fun AddEditTransactionSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
+    val lang = LocalAppLanguage.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val categories by viewModel.allCategories.collectAsStateWithLifecycle()
     val currencySymbol by viewModel.currencySymbol.collectAsStateWithLifecycle()
 
     var selectedType by remember { mutableStateOf(transactionToEdit?.type ?: initialType) }
-    var amountText by remember { mutableStateOf(transactionToEdit?.amount?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
+    var amountText by remember {
+        mutableStateOf(
+            transactionToEdit?.amount?.let {
+                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+            } ?: ""
+        )
+    }
     var selectedCategory by remember { mutableStateOf(transactionToEdit?.category ?: "") }
     var selectedDate by remember { mutableLongStateOf(transactionToEdit?.date ?: System.currentTimeMillis()) }
     var selectedPaymentMethod by remember { mutableStateOf(transactionToEdit?.paymentMethod ?: PaymentMethod.CASH) }
@@ -101,7 +109,9 @@ fun AddEditTransactionSheet(
     var newCategoryName by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val filteredCategories = categories.filter { it.type == selectedType }
+    val filteredCategories = remember(categories, selectedType) {
+        categories.filter { it.type == selectedType }
+    }
 
     if (selectedCategory.isBlank() && filteredCategories.isNotEmpty()) {
         selectedCategory = filteredCategories.first().name
@@ -110,34 +120,39 @@ fun AddEditTransactionSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false)
     ) {
+        BottomSheetKeyboardBackHandler(
+            sheetState = sheetState,
+            onDismiss = onDismiss
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp)
+                .padding(bottom = 28.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (transactionToEdit != null) "লেনদেন এডিট করুন" else "নতুন লেনদেন যোগ করুন",
+                    text = if (transactionToEdit != null) strings.editTransactionTitle else strings.addTransactionTitle,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                    Icon(Icons.Default.Close, contentDescription = strings.closeLabel)
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Income / Expense Type Tab
             TabRow(
                 selectedTabIndex = if (selectedType == TransactionType.INCOME) 0 else 1,
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -156,7 +171,11 @@ fun AddEditTransactionSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = IncomeGreen, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("আয় (Income)", fontWeight = FontWeight.Bold, color = if (selectedType == TransactionType.INCOME) IncomeGreen else Color.Gray)
+                            Text(
+                                text = strings.income,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedType == TransactionType.INCOME) IncomeGreen else Color.Gray
+                            )
                         }
                     }
                 )
@@ -171,7 +190,11 @@ fun AddEditTransactionSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = ExpenseRed, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("ব্যয় (Expense)", fontWeight = FontWeight.Bold, color = if (selectedType == TransactionType.EXPENSE) ExpenseRed else Color.Gray)
+                            Text(
+                                text = strings.expense,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedType == TransactionType.EXPENSE) ExpenseRed else Color.Gray
+                            )
                         }
                     }
                 )
@@ -179,14 +202,13 @@ fun AddEditTransactionSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Amount Input Field
             OutlinedTextField(
                 value = amountText,
                 onValueChange = {
                     amountText = it
                     errorMessage = null
                 },
-                label = { Text("টাকার পরিমাণ (Amount)") },
+                label = { Text(strings.amountInputLabel) },
                 prefix = { Text("$currencySymbol ", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(16.dp),
@@ -196,7 +218,6 @@ fun AddEditTransactionSheet(
                 singleLine = true
             )
 
-            // Fast Amount Preset Chips
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -220,7 +241,7 @@ fun AddEditTransactionSheet(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(vertical = 6.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -228,20 +249,19 @@ fun AddEditTransactionSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Categories Section
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "ক্যাটাগরি নির্বাচন করুন",
+                    text = strings.selectCategoryLabel,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
                 TextButton(onClick = { showCustomCategoryDialog = true }) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Text("নতুন ক্যাটাগরি", style = MaterialTheme.typography.labelMedium)
+                    Text(strings.newCategoryAction, style = MaterialTheme.typography.labelMedium)
                 }
             }
 
@@ -249,7 +269,7 @@ fun AddEditTransactionSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(filteredCategories) { cat ->
+                items(filteredCategories, key = { it.id }) { cat ->
                     FilterChip(
                         selected = selectedCategory == cat.name,
                         onClick = { selectedCategory = cat.name },
@@ -263,9 +283,8 @@ fun AddEditTransactionSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Payment Method
             Text(
-                text = "পেমেন্ট মাধ্যম (Payment Method)",
+                text = strings.paymentMethodLabel,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -274,14 +293,14 @@ fun AddEditTransactionSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(PaymentMethod.values()) { pm ->
+                items(PaymentMethod.entries, key = { it.name }) { pm ->
                     val label = when (pm) {
-                        PaymentMethod.CASH -> "Cash (নগদ)"
-                        PaymentMethod.BANK -> "Bank (ব্যাংক)"
-                        PaymentMethod.BKASH -> "bKash"
-                        PaymentMethod.NAGAD -> "Nagad"
-                        PaymentMethod.CARD -> "Card"
-                        PaymentMethod.OTHER -> "অন্যান্য"
+                        PaymentMethod.CASH -> strings.walletCash
+                        PaymentMethod.BANK -> strings.walletBank
+                        PaymentMethod.BKASH -> strings.walletBkash
+                        PaymentMethod.NAGAD -> strings.walletNagad
+                        PaymentMethod.CARD -> strings.walletCard
+                        PaymentMethod.OTHER -> strings.walletOther
                     }
                     FilterChip(
                         selected = selectedPaymentMethod == pm,
@@ -293,7 +312,6 @@ fun AddEditTransactionSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Date Picker Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -316,21 +334,23 @@ fun AddEditTransactionSheet(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Date", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.CalendarToday, contentDescription = strings.datePrefix, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "তারিখ: ${DateUtils.formatDate(selectedDate)}",
+                            text = "${strings.datePrefix}: ${DateUtils.formatDate(selectedDate, lang)}",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                     }
                     Text(
-                        text = "পরিবর্তন",
+                        text = strings.changeLabel,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
@@ -340,17 +360,15 @@ fun AddEditTransactionSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Note Input
             OutlinedTextField(
                 value = noteText,
                 onValueChange = { noteText = it },
-                label = { Text("নোট বা বিবরণ (ঐচ্ছিক)") },
+                label = { Text(strings.noteOptionalLabel) },
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 3
             )
 
-            // Error text if invalid
             errorMessage?.let {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(it, color = ExpenseRed, style = MaterialTheme.typography.bodySmall)
@@ -358,7 +376,6 @@ fun AddEditTransactionSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -373,7 +390,7 @@ fun AddEditTransactionSheet(
                         modifier = Modifier.weight(0.4f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ExpenseRed)
+                        Icon(Icons.Default.Delete, contentDescription = strings.deleteAction, tint = ExpenseRed)
                     }
                 }
 
@@ -381,11 +398,11 @@ fun AddEditTransactionSheet(
                     onClick = {
                         val amount = amountText.toDoubleOrNull()
                         if (amount == null || amount <= 0) {
-                            errorMessage = "সঠিক টাকার পরিমাণ লিখুন"
+                            errorMessage = strings.enterValidAmountError
                             return@Button
                         }
                         if (selectedCategory.isBlank()) {
-                            errorMessage = "একটি ক্যাটাগরি নির্বাচন করুন"
+                            errorMessage = strings.selectCategoryError
                             return@Button
                         }
 
@@ -409,6 +426,7 @@ fun AddEditTransactionSheet(
                                 note = noteText,
                                 paymentMethod = selectedPaymentMethod
                             )
+                            AdManager.maybeShowInterstitialAfterSave(context.findActivity())
                         }
                         onDismiss()
                     },
@@ -418,22 +436,21 @@ fun AddEditTransactionSheet(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text("সংরক্ষণ করুন (Save)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(strings.saveAction, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
         }
     }
 
-    // Custom Category Dialog
     if (showCustomCategoryDialog) {
         AlertDialog(
             onDismissRequest = { showCustomCategoryDialog = false },
-            title = { Text("নতুন ক্যাটাগরি তৈরি করুন") },
+            title = { Text(strings.newCategoryTitle) },
             text = {
                 OutlinedTextField(
                     value = newCategoryName,
                     onValueChange = { newCategoryName = it },
-                    label = { Text("ক্যাটাগরির নাম") },
+                    label = { Text(strings.categoryNameLabel) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -450,12 +467,12 @@ fun AddEditTransactionSheet(
                         }
                     }
                 ) {
-                    Text("তৈরি করুন")
+                    Text(strings.createAction)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCustomCategoryDialog = false }) {
-                    Text("বাতিল")
+                    Text(strings.cancelAction)
                 }
             }
         )

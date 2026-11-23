@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -52,14 +54,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ads.AdManager
 import com.example.data.local.entity.DebtEntity
 import com.example.data.local.entity.DebtType
+import com.example.ui.components.BottomSheetKeyboardBackHandler
+import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.DebtPayable
 import com.example.ui.theme.DebtReceivable
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.PrimaryGreen
 import com.example.ui.viewmodel.MainViewModel
 import com.example.utils.DateUtils
+import com.example.utils.findActivity
 import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,13 +78,21 @@ fun AddEditDebtSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
+    val lang = LocalAppLanguage.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val currencySymbol by viewModel.currencySymbol.collectAsStateWithLifecycle()
 
     var selectedType by remember { mutableStateOf(debtToEdit?.debtType ?: initialType) }
     var personName by remember { mutableStateOf(debtToEdit?.personName ?: "") }
     var phoneNumber by remember { mutableStateOf(debtToEdit?.phoneNumber ?: "") }
-    var amountText by remember { mutableStateOf(debtToEdit?.totalAmount?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
+    var amountText by remember {
+        mutableStateOf(
+            debtToEdit?.totalAmount?.let {
+                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+            } ?: ""
+        )
+    }
     var selectedDate by remember { mutableLongStateOf(debtToEdit?.date ?: System.currentTimeMillis()) }
     var selectedDueDate by remember { mutableStateOf(debtToEdit?.dueDate) }
     var noteText by remember { mutableStateOf(debtToEdit?.note ?: "") }
@@ -86,13 +101,20 @@ fun AddEditDebtSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false)
     ) {
+        BottomSheetKeyboardBackHandler(
+            sheetState = sheetState,
+            onDismiss = onDismiss
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp)
+                .padding(bottom = 28.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             Row(
@@ -101,18 +123,17 @@ fun AddEditDebtSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (debtToEdit != null) "খাতা এন্ট্রি এডিট করুন" else "নতুন খাতা এন্ট্রি (দেনা/পাওনা)",
+                    text = if (debtToEdit != null) strings.editDebtTitle else strings.addDebtTitle,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                    Icon(Icons.Default.Close, contentDescription = strings.closeLabel)
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Debt Type Tabs (Receivable / Payable)
             TabRow(
                 selectedTabIndex = if (selectedType == DebtType.RECEIVABLE) 0 else 1,
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -127,7 +148,12 @@ fun AddEditDebtSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Handshake, contentDescription = null, tint = DebtReceivable, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("পাওনা টাকা (আমি পাবো)", fontWeight = FontWeight.Bold, color = if (selectedType == DebtType.RECEIVABLE) DebtReceivable else Color.Gray)
+                            Text(
+                                text = strings.receivableTabTitle,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                color = if (selectedType == DebtType.RECEIVABLE) DebtReceivable else Color.Gray
+                            )
                         }
                     }
                 )
@@ -138,7 +164,12 @@ fun AddEditDebtSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Payment, contentDescription = null, tint = DebtPayable, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("দেনা টাকা (দিতে হবে)", fontWeight = FontWeight.Bold, color = if (selectedType == DebtType.PAYABLE) DebtPayable else Color.Gray)
+                            Text(
+                                text = strings.payableTabTitle,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                color = if (selectedType == DebtType.PAYABLE) DebtPayable else Color.Gray
+                            )
                         }
                     }
                 )
@@ -146,14 +177,13 @@ fun AddEditDebtSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Person Name
             OutlinedTextField(
                 value = personName,
                 onValueChange = {
                     personName = it
                     errorMessage = null
                 },
-                label = { Text("ব্যক্তি বা প্রতিষ্ঠানের নাম *") },
+                label = { Text(strings.personNameLabel) },
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -163,11 +193,10 @@ fun AddEditDebtSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Phone Number
             OutlinedTextField(
                 value = phoneNumber,
                 onValueChange = { phoneNumber = it },
-                label = { Text("ফোন নম্বর (তাগাদা ও কলের জন্য)") },
+                label = { Text(strings.phoneOptionalLabel) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
@@ -178,14 +207,13 @@ fun AddEditDebtSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Amount Field
             OutlinedTextField(
                 value = amountText,
                 onValueChange = {
                     amountText = it
                     errorMessage = null
                 },
-                label = { Text("টাকার পরিমাণ (Total Amount) *") },
+                label = { Text("${strings.amountInputLabel} *") },
                 prefix = { Text("$currencySymbol ", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(16.dp),
@@ -197,7 +225,6 @@ fun AddEditDebtSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Date Selection
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -218,26 +245,27 @@ fun AddEditDebtSheet(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Date", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.CalendarToday, contentDescription = strings.transactionDatePrefix, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "লেনদেনের তারিখ: ${DateUtils.formatDate(selectedDate)}",
+                            text = "${strings.transactionDatePrefix}: ${DateUtils.formatDate(selectedDate, lang)}",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                     }
-                    Text("পরিবর্তন", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text(strings.changeLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Due Date Selection (Optional)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -260,21 +288,24 @@ fun AddEditDebtSheet(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Due Date", tint = PrimaryGreen)
+                        Icon(Icons.Default.CalendarToday, contentDescription = strings.dueDatePrefix, tint = PrimaryGreen)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = selectedDueDate?.let { "পরিশোধের শেষ তারিখ: ${DateUtils.formatDate(it)}" } ?: "পরিশোধের শেষ তারিখ (ঐচ্ছিক)",
+                            text = selectedDueDate?.let { "${strings.dueDatePrefix}: ${DateUtils.formatDate(it, lang)}" }
+                                ?: strings.dueDateOptionalLabel,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                     }
                     Text(
-                        text = if (selectedDueDate != null) "পরিবর্তন" else "নির্ধারণ করুন",
+                        text = if (selectedDueDate != null) strings.changeLabel else strings.setDateLabel,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
@@ -284,11 +315,10 @@ fun AddEditDebtSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Note Input
             OutlinedTextField(
                 value = noteText,
                 onValueChange = { noteText = it },
-                label = { Text("নোট বা পণ্যের বিবরণ (ঐচ্ছিক)") },
+                label = { Text(strings.debtNoteOptionalLabel) },
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 3
@@ -301,7 +331,6 @@ fun AddEditDebtSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -316,7 +345,7 @@ fun AddEditDebtSheet(
                         modifier = Modifier.weight(0.4f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ExpenseRed)
+                        Icon(Icons.Default.Delete, contentDescription = strings.deleteAction, tint = ExpenseRed)
                     }
                 }
 
@@ -324,11 +353,11 @@ fun AddEditDebtSheet(
                     onClick = {
                         val amount = amountText.toDoubleOrNull()
                         if (personName.isBlank()) {
-                            errorMessage = "ব্যক্তির নাম লিখুন"
+                            errorMessage = strings.enterPersonNameError
                             return@Button
                         }
                         if (amount == null || amount <= 0) {
-                            errorMessage = "সঠিক টাকার পরিমাণ লিখুন"
+                            errorMessage = strings.enterValidAmountError
                             return@Button
                         }
 
@@ -354,6 +383,7 @@ fun AddEditDebtSheet(
                                 dueDate = selectedDueDate,
                                 note = noteText
                             )
+                            AdManager.maybeShowInterstitialAfterSave(context.findActivity())
                         }
                         onDismiss()
                     },
@@ -363,7 +393,7 @@ fun AddEditDebtSheet(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text("খাতায় সংরক্ষণ করুন", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(strings.saveDebtButton, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
         }

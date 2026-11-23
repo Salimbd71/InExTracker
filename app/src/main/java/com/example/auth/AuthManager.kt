@@ -17,6 +17,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.OAuthProvider
@@ -78,12 +79,22 @@ class AuthManager(private val context: Context) {
         val isGuestMode = prefs.getBoolean("is_guest_mode", false)
 
         if (currentUser != null) {
+            val resolvedPhoto = currentUser.photoUrl?.toString()
+                ?: currentUser.providerData.firstNotNullOfOrNull { it.photoUrl?.toString() }
+                ?: prefs.getString("last_user_photo_url", null)
+            if (!resolvedPhoto.isNullOrBlank()) {
+                prefs.edit().putString("last_user_photo_url", resolvedPhoto).apply()
+            }
             _authState.value = AuthState.Authenticated(
                 UserProfile(
                     uid = currentUser.uid,
-                    displayName = currentUser.displayName ?: "User",
-                    email = currentUser.email ?: "",
-                    photoUrl = currentUser.photoUrl?.toString(),
+                    displayName = currentUser.displayName
+                        ?: currentUser.providerData.firstNotNullOfOrNull { it.displayName }
+                        ?: "User",
+                    email = currentUser.email
+                        ?: currentUser.providerData.firstNotNullOfOrNull { it.email }
+                        ?: "",
+                    photoUrl = resolvedPhoto,
                     isAnonymous = currentUser.isAnonymous,
                     creationTimestamp = currentUser.metadata?.creationTimestamp ?: System.currentTimeMillis()
                 )
@@ -157,15 +168,35 @@ class AuthManager(private val context: Context) {
         fallbackEmail: String? = null,
         fallbackPhotoUrl: String? = null
     ): UserProfile {
+        val resolvedPhoto = user.photoUrl?.toString()
+            ?: user.providerData.firstNotNullOfOrNull { it.photoUrl?.toString() }
+            ?: fallbackPhotoUrl
+            ?: prefs.getString("last_user_photo_url", null)
+
+        val resolvedName = user.displayName
+            ?: user.providerData.firstNotNullOfOrNull { it.displayName }
+            ?: fallbackDisplayName
+            ?: "User"
+
+        val resolvedEmail = user.email
+            ?: user.providerData.firstNotNullOfOrNull { it.email }
+            ?: fallbackEmail
+            ?: ""
+
         prefs.edit()
             .putBoolean("is_guest_mode", false)
             .putBoolean("has_completed_onboarding", true)
+            .apply {
+                if (!resolvedPhoto.isNullOrBlank()) {
+                    putString("last_user_photo_url", resolvedPhoto)
+                }
+            }
             .apply()
         val profile = UserProfile(
             uid = user.uid,
-            displayName = user.displayName ?: fallbackDisplayName ?: "User",
-            email = user.email ?: fallbackEmail ?: "",
-            photoUrl = user.photoUrl?.toString() ?: fallbackPhotoUrl,
+            displayName = resolvedName,
+            email = resolvedEmail,
+            photoUrl = resolvedPhoto,
             isAnonymous = false,
             creationTimestamp = user.metadata?.creationTimestamp ?: System.currentTimeMillis()
         )
@@ -294,18 +325,39 @@ class AuthManager(private val context: Context) {
         try {
             firebaseAuth?.signOut()
             credentialManager.clearCredentialState(ClearCredentialStateRequest())
-            prefs.edit()
-                .putBoolean("is_guest_mode", false)
-                .putBoolean("has_completed_onboarding", false)
-                .apply()
-            _authState.value = AuthState.Unauthenticated
         } catch (e: Exception) {
             Log.e(tag, "Error signing out: ${e.message}")
+        } finally {
             prefs.edit()
                 .putBoolean("is_guest_mode", false)
                 .putBoolean("has_completed_onboarding", false)
+                .remove("last_user_photo_url")
                 .apply()
             _authState.value = AuthState.Unauthenticated
+        }
+    }
+
+    suspend fun deleteFirebaseAuthAccount(): Result<Unit> {
+        return try {
+            val user = firebaseAuth?.currentUser
+            if (user != null) {
+                user.delete().await()
+            }
+            runCatching { credentialManager.clearCredentialState(ClearCredentialStateRequest()) }
+            prefs.edit()
+                .putBoolean("is_guest_mode", false)
+                .putBoolean("has_completed_onboarding", false)
+                .remove("last_user_photo_url")
+                .remove("guest_user_id")
+                .apply()
+            _authState.value = AuthState.Unauthenticated
+            Result.success(Unit)
+        } catch (e: FirebaseAuthRecentLoginRequiredException) {
+            Log.w(tag, "Recent login required to delete account", e)
+            Result.failure(e)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to delete Firebase account: ${e.message}", e)
+            Result.failure(e)
         }
     }
 

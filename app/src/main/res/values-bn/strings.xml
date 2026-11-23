@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">হিসাব খাতা</string>
+    <string name="app_name">InEx Tracker</string>
     <string name="app_tagline">স্মার্ট আয়, ব্যয় ও দেনা-পাওনা ট্র্যাকার</string>
     
     <!-- Navigation -->
@@ -18,8 +18,8 @@
     <string name="action_edit">এডিট</string>
     <string name="action_search">খুঁজুন…</string>
     <string name="action_filter">ফিল্টার</string>
-    <string name="action_export_csv">CSV এক্সপোর্ট</string>
-    <string name="action_export_pdf">রিপোর্ট এক্সপোর্ট</string>
+    <string name="action_export_csv">PDF এক্সপোর্ট</string>
+    <string name="action_export_pdf">PDF রিপোর্ট এক্সপোর্ট</string>
     <string name="action_sync_now">এখনই সিঙ্ক করুন</string>
     <string name="action_sign_in_google">Google দিয়ে লগইন</string>
     <string name="action_sign_out">লগআউট</string>

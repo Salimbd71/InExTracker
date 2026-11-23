@@ -32,6 +32,8 @@ import com.example.notification.DebtReminderManager
 import com.example.sync.SyncManager
 import com.example.sync.SyncUiState
 import com.example.utils.DateUtils
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,9 +41,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.Calendar
+import kotlinx.coroutines.withContext
 
 enum class DateFilterType {
     ALL,
@@ -141,11 +144,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         db.syncMetaDao().getSyncMeta(uid)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    // Debts with calculated payments
+    // Debts with calculated payments (O(N + M) grouping on Default dispatcher)
     val debtsWithPayments: StateFlow<List<DebtWithPayments>> = combine(allDebts, allDebtPayments) { debts, payments ->
         val now = System.currentTimeMillis()
+        val paymentsByDebt = payments.groupBy { it.debtId }
         debts.map { debt ->
-            val debtPmts = payments.filter { it.debtId == debt.id }
+            val debtPmts = paymentsByDebt[debt.id].orEmpty()
             val paid = debtPmts.sumOf { it.amount }
             val remaining = (debt.totalAmount - paid).coerceAtLeast(0.0)
             val isOverdue = debt.dueDate != null && debt.dueDate < now && remaining > 0
@@ -165,13 +169,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 status = status
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Dashboard summary calculations
+    // Dashboard summary calculations (bounds computed once per emission on Default dispatcher)
     val dashboardSummary: StateFlow<DashboardSummary> = combine(
         allTransactions,
         debtsWithPayments
     ) { transactions, debtList ->
+        val (todayStart, todayEnd) = DateUtils.getDayBounds(0)
+        val (monthStart, monthEnd) = DateUtils.getMonthBounds(0)
+
         var totalIncome = 0.0
         var totalExpense = 0.0
         var todayIncome = 0.0
@@ -182,21 +190,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         for (t in transactions) {
             val amt = t.amount
+            val isToday = t.date in todayStart..todayEnd
+            val isMonth = t.date in monthStart..monthEnd
             if (t.type == TransactionType.INCOME) {
                 totalIncome += amt
                 walletMap[t.paymentMethod] = (walletMap[t.paymentMethod] ?: 0.0) + amt
-                if (DateUtils.isToday(t.date)) todayIncome += amt
-                if (DateUtils.isThisMonth(t.date)) monthIncome += amt
+                if (isToday) todayIncome += amt
+                if (isMonth) monthIncome += amt
             } else {
                 totalExpense += amt
                 walletMap[t.paymentMethod] = (walletMap[t.paymentMethod] ?: 0.0) - amt
-                if (DateUtils.isToday(t.date)) todayExpense += amt
-                if (DateUtils.isThisMonth(t.date)) monthExpense += amt
+                if (isToday) todayExpense += amt
+                if (isMonth) monthExpense += amt
             }
         }
 
-        val totalReceivable = debtList.filter { it.debt.debtType == DebtType.RECEIVABLE }.sumOf { it.remainingAmount }
-        val totalPayable = debtList.filter { it.debt.debtType == DebtType.PAYABLE }.sumOf { it.remainingAmount }
+        var totalReceivable = 0.0
+        var totalPayable = 0.0
+        for (d in debtList) {
+            if (d.debt.debtType == DebtType.RECEIVABLE) totalReceivable += d.remainingAmount
+            else totalPayable += d.remainingAmount
+        }
 
         DashboardSummary(
             currentBalance = totalIncome - totalExpense,
@@ -210,7 +224,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             thisMonthExpense = monthExpense,
             walletBalances = walletMap
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardSummary())
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardSummary())
 
     private val txFilterState = combine(
         searchQuery,
@@ -222,42 +237,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         TxFilterState(query, type, cat, pm, dateRange)
     }
 
-    // Filtered transactions
+    // Filtered transactions (bounds computed once outside loop)
     val filteredTransactions: StateFlow<List<TransactionEntity>> = combine(
         allTransactions,
         txFilterState
     ) { txs, filter ->
+        val dateBounds: Pair<Long, Long>? = when (filter.dateRange) {
+            DateFilterType.ALL -> null
+            DateFilterType.TODAY -> DateUtils.getDayBounds(0)
+            DateFilterType.YESTERDAY -> DateUtils.getDayBounds(-1)
+            DateFilterType.THIS_WEEK -> DateUtils.getWeekBounds()
+            DateFilterType.THIS_MONTH -> DateUtils.getMonthBounds(0)
+            DateFilterType.LAST_MONTH -> DateUtils.getMonthBounds(-1)
+        }
+        val query = filter.query.trim()
         txs.filter { tx ->
-            val matchesQuery = filter.query.isBlank() ||
-                    tx.category.contains(filter.query, ignoreCase = true) ||
-                    tx.note.contains(filter.query, ignoreCase = true) ||
-                    tx.amount.toString().contains(filter.query)
+            val matchesQuery = query.isEmpty() ||
+                    tx.category.contains(query, ignoreCase = true) ||
+                    tx.note.contains(query, ignoreCase = true) ||
+                    tx.amount.toString().contains(query)
             val matchesType = filter.type == null || tx.type == filter.type
             val matchesCat = filter.category == null || tx.category == filter.category
             val matchesPm = filter.paymentMethod == null || tx.paymentMethod == filter.paymentMethod
-            val matchesDate = when (filter.dateRange) {
-                DateFilterType.ALL -> true
-                DateFilterType.TODAY -> DateUtils.isToday(tx.date)
-                DateFilterType.YESTERDAY -> {
-                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-                    val txCal = Calendar.getInstance().apply { timeInMillis = tx.date }
-                    cal.get(Calendar.YEAR) == txCal.get(Calendar.YEAR) && cal.get(Calendar.DAY_OF_YEAR) == txCal.get(Calendar.DAY_OF_YEAR)
-                }
-                DateFilterType.THIS_WEEK -> {
-                    val cal = Calendar.getInstance()
-                    val txCal = Calendar.getInstance().apply { timeInMillis = tx.date }
-                    cal.get(Calendar.YEAR) == txCal.get(Calendar.YEAR) && cal.get(Calendar.WEEK_OF_YEAR) == txCal.get(Calendar.WEEK_OF_YEAR)
-                }
-                DateFilterType.THIS_MONTH -> DateUtils.isThisMonth(tx.date)
-                DateFilterType.LAST_MONTH -> {
-                    val cal = Calendar.getInstance().apply { add(Calendar.MONTH, -1) }
-                    val txCal = Calendar.getInstance().apply { timeInMillis = tx.date }
-                    cal.get(Calendar.YEAR) == txCal.get(Calendar.YEAR) && cal.get(Calendar.MONTH) == txCal.get(Calendar.MONTH)
-                }
-            }
+            val matchesDate = dateBounds == null || tx.date in dateBounds.first..dateBounds.second
             matchesQuery && matchesType && matchesCat && matchesPm && matchesDate
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Filtered Debts
     val filteredDebts: StateFlow<List<DebtWithPayments>> = combine(
@@ -265,9 +271,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         debtSearchQuery,
         debtFilterType,
         debtFilterStatus
-    ) { debts, query, type, status ->
+    ) { debts, rawQuery, type, status ->
+        val query = rawQuery.trim()
         debts.filter { d ->
-            val matchesQuery = query.isBlank() ||
+            val matchesQuery = query.isEmpty() ||
                     d.debt.personName.contains(query, ignoreCase = true) ||
                     d.debt.phoneNumber.contains(query) ||
                     d.debt.note.contains(query, ignoreCase = true) ||
@@ -276,21 +283,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val matchesStatus = status == null || d.status == status
             matchesQuery && matchesType && matchesStatus
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Budget progress
+    // Budget progress (pre-grouped O(N + M))
     val budgetProgressList: StateFlow<List<BudgetProgress>> = combine(allBudgets, allTransactions) { budgets, txs ->
+        val (monthStart, monthEnd) = DateUtils.getMonthBounds(0)
+        val spentByCategory = mutableMapOf<String, Double>()
+        for (tx in txs) {
+            if (tx.type == TransactionType.EXPENSE && tx.date in monthStart..monthEnd) {
+                val key = tx.category.lowercase()
+                spentByCategory[key] = (spentByCategory[key] ?: 0.0) + tx.amount
+            }
+        }
         budgets.map { b ->
-            val spent = txs.filter {
-                it.type == TransactionType.EXPENSE &&
-                it.category.equals(b.category, ignoreCase = true) &&
-                DateUtils.isThisMonth(it.date)
-            }.sumOf { it.amount }
+            val spent = spentByCategory[b.category.lowercase()] ?: 0.0
             val remaining = (b.monthlyLimit - spent).coerceAtLeast(0.0)
             val pct = if (b.monthlyLimit > 0) (spent / b.monthlyLimit).toFloat() else 0f
             BudgetProgress(budget = b, spent = spent, remaining = remaining, percentageUsed = pct)
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         AdManager.initialize(application)
@@ -334,6 +347,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             authManager.signOut()
             _currentUserId.value = authManager.getCurrentUserId()
+        }
+    }
+
+    fun deleteAccountAndData(onResult: (success: Boolean, reauthRequired: Boolean, error: String?) -> Unit) {
+        viewModelScope.launch {
+            val state = authState.value
+            val uid = (state as? AuthState.Authenticated)?.user?.uid ?: _currentUserId.value
+            val isGuest = (state as? AuthState.Authenticated)?.user?.isAnonymous ?: true
+
+            if (!isGuest) {
+                realtimeDbService.deleteUserCloudData(uid)
+                val authResult = authManager.deleteFirebaseAuthAccount()
+                if (authResult.isFailure) {
+                    val ex = authResult.exceptionOrNull()
+                    val reauth = ex is FirebaseAuthRecentLoginRequiredException
+                    onResult(false, reauth, ex?.message)
+                    return@launch
+                }
+            } else {
+                authManager.signOut()
+            }
+
+            withContext(Dispatchers.IO) {
+                db.transactionDao().deleteAllForUser(uid)
+                db.debtDao().deleteAllForUser(uid)
+                db.debtPaymentDao().deleteAllForUser(uid)
+                db.categoryDao().deleteAllForUser(uid)
+                db.budgetDao().deleteAllForUser(uid)
+                db.recurringDao().deleteAllForUser(uid)
+                db.syncMetaDao().deleteAllForUser(uid)
+            }
+            setPinCode(null)
+            _currentUserId.value = authManager.getCurrentUserId()
+            onResult(true, false, null)
         }
     }
 

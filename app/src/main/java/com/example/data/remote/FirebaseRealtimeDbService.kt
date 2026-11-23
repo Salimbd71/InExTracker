@@ -395,4 +395,19 @@ class FirebaseRealtimeDbService {
             false
         }
     }
+
+    suspend fun deleteUserCloudData(userId: String): Boolean {
+        return try {
+            val db = dbInstance ?: return false
+            db.reference
+                .child("users")
+                .child(userId)
+                .removeValue()
+                .await()
+            true
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to delete user data from Realtime DB: ${e.message}")
+            false
+        }
+    }
 }

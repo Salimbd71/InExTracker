@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -19,23 +21,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,16 +45,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.DarkSlate
-import com.example.ui.theme.IncomeGreen
 import com.example.ui.theme.PrimaryGreen
 import com.example.ui.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
@@ -63,9 +67,12 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     viewModel: MainViewModel,
     onLoginSuccess: () -> Unit,
+    onNavigateToLegal: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
+    val language by viewModel.language.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
 
@@ -73,32 +80,61 @@ fun LoginScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .navigationBarsPadding()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            // Header Banner
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
                     .clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                PrimaryGreen,
+                                Color(0xFF09453F),
                                 Color(0xFF0F766E),
                                 DarkSlate
                             )
                         )
                     )
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
+                    .drawBehind {
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.06f),
+                            radius = size.height * 0.65f,
+                            center = Offset(size.width * 0.9f, size.height * 0.15f)
+                        )
+                        drawCircle(
+                            color = Color(0xFF2DD4BF).copy(alpha = 0.09f),
+                            radius = size.height * 0.45f,
+                            center = Offset(size.width * 0.12f, size.height * 0.85f)
+                        )
+                    }
+                    .statusBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 22.dp)
             ) {
+                Surface(
+                    onClick = { viewModel.setLanguage(if (language == "bn") "en" else "bn") },
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White.copy(alpha = 0.16f),
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        text = if (language == "bn") "EN" else "বাংলা",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp, bottom = 8.dp)
                 ) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
@@ -128,7 +164,7 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "InEx Tracker",
+                        text = strings.appName,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White
@@ -137,7 +173,7 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "Income & Expense Realtime Database Tracker",
+                        text = strings.appTagline,
                         fontSize = 13.sp,
                         color = Color.White.copy(alpha = 0.85f),
                         textAlign = TextAlign.Center
@@ -145,14 +181,12 @@ fun LoginScreen(
                 }
             }
 
-            // Main Content Area
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Key Features Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -164,7 +198,7 @@ fun LoginScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text(
-                            text = "কেন InEx Tracker ব্যবহার করবেন?",
+                            text = strings.loginWhyTitle,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -172,25 +206,24 @@ fun LoginScreen(
 
                         FeatureRow(
                             icon = Icons.Default.CloudDone,
-                            title = "Firebase Realtime Database",
-                            desc = "সব আয়-ব্যয় এবং দেনা-পাওনা ক্লাউডে সুরক্ষিত থাকবে।"
+                            title = strings.loginFeatureCloudTitle,
+                            desc = strings.loginFeatureCloudDesc
                         )
                         FeatureRow(
                             icon = Icons.Default.Sync,
-                            title = "অটো সিঙ্ক এবং অফলাইন সাপোর্ট",
-                            desc = "ইন্টারনেট ছাড়াও নির্বিঘ্নে হিসাব রাখুন, নেট পেলে অটো সিঙ্ক হবে।"
+                            title = strings.loginFeatureOfflineTitle,
+                            desc = strings.loginFeatureOfflineDesc
                         )
                         FeatureRow(
-                            icon = Icons.Default.PieChart,
-                            title = "বাজেট এবং নিখুঁত রিপোর্ট",
-                            desc = "দৈনিক ও মাসিক ব্যয়ের চার্ট এবং ক্যাটাগরি বিশ্লেষণ।"
+                            icon = Icons.Default.PictureAsPdf,
+                            title = strings.loginFeatureReportTitle,
+                            desc = strings.loginFeatureReportDesc
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-                // Sign in with Google Button
                 Button(
                     onClick = {
                         if (isLoading) return@Button
@@ -199,12 +232,12 @@ fun LoginScreen(
                             val result = viewModel.signInWithGoogle(context)
                             isLoading = false
                             if (result.isSuccess) {
-                                Toast.makeText(context, "Google দিয়ে লগইন সফল হয়েছে!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, strings.loginSuccessToast, Toast.LENGTH_SHORT).show()
                                 onLoginSuccess()
                             } else {
                                 Toast.makeText(
                                     context,
-                                    "লগইন সম্পন্ন হয়নি: ${result.exceptionOrNull()?.message ?: "Unknown"}",
+                                    "${strings.loginFailedPrefix}: ${result.exceptionOrNull()?.message ?: "Unknown"}",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -229,7 +262,6 @@ fun LoginScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
-                            // Google G Icon representation
                             Surface(
                                 shape = CircleShape,
                                 color = Color(0xFF4285F4),
@@ -246,7 +278,7 @@ fun LoginScreen(
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "Sign in with Google",
+                                text = strings.signInWithGoogle,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1E293B)
@@ -257,16 +289,15 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Divider OR
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     HorizontalDivider(modifier = Modifier.weight(1f))
                     Text(
-                        text = " অথবা ",
+                        text = " ${strings.orLabel} ",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp)
@@ -276,7 +307,6 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Continue as Guest Button
                 OutlinedButton(
                     onClick = {
                         viewModel.continueAsGuest()
@@ -289,22 +319,46 @@ fun LoginScreen(
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Text(
-                        text = "গেস্ট হিসেবে ব্যবহার করুন (অফলাইন মোড)",
+                        text = strings.continueAsGuest,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PrimaryGreen
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "লগইন করার মাধ্যমে আপনি আপনার সব ডাটা রিয়েলটাইমে ক্লাউডে সংরক্ষণ করতে পারবেন।",
+                    text = strings.loginPrivacyHint,
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     lineHeight = 16.sp
                 )
+
+                Row(
+                    modifier = Modifier.padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { onNavigateToLegal(0) }) {
+                        Text(
+                            text = if (language == "bn") "প্রাইভেসি পলিসি" else "Privacy Policy",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PrimaryGreen
+                        )
+                    }
+                    Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { onNavigateToLegal(1) }) {
+                        Text(
+                            text = if (language == "bn") "শর্তাবলী" else "Terms & Conditions",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PrimaryGreen
+                        )
+                    }
+                }
             }
         }
     }
@@ -312,7 +366,7 @@ fun LoginScreen(
 
 @Composable
 private fun FeatureRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     desc: String
 ) {

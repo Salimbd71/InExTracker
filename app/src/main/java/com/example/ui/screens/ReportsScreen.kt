@@ -1,8 +1,14 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,19 +22,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,8 +37,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,14 +50,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.auth.AuthState
 import com.example.data.local.entity.DebtType
 import com.example.data.local.entity.TransactionType
-import com.example.ui.components.AdMobBannerView
 import com.example.ui.components.CategoryDonutChart
-import com.example.ui.theme.DebtPayable
-import com.example.ui.theme.DebtReceivable
+import com.example.ui.components.PdfExportDialog
+import com.example.ui.components.PremiumAppHeader
+import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
 import com.example.ui.theme.PrimaryGreen
@@ -67,109 +67,124 @@ import com.example.ui.viewmodel.MainViewModel
 import com.example.utils.CurrencyUtils
 import com.example.utils.DateUtils
 import com.example.utils.ExportUtils
-import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportsScreen(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
+    val lang = LocalAppLanguage.current
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val allDebts by viewModel.debtsWithPayments.collectAsStateWithLifecycle()
     val currencySymbol by viewModel.currencySymbol.collectAsStateWithLifecycle()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
 
     var selectedPeriod by remember { mutableStateOf(DateFilterType.THIS_MONTH) }
+    var showPdfDialog by remember { mutableStateOf(false) }
 
     val filteredTransactions = remember(allTransactions, selectedPeriod) {
-        allTransactions.filter { tx ->
-            when (selectedPeriod) {
-                DateFilterType.ALL -> true
-                DateFilterType.TODAY -> DateUtils.isToday(tx.date)
-                DateFilterType.YESTERDAY -> {
-                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-                    val txCal = Calendar.getInstance().apply { timeInMillis = tx.date }
-                    cal.get(Calendar.YEAR) == txCal.get(Calendar.YEAR) && cal.get(Calendar.DAY_OF_YEAR) == txCal.get(Calendar.DAY_OF_YEAR)
-                }
-                DateFilterType.THIS_WEEK -> {
-                    val cal = Calendar.getInstance()
-                    val txCal = Calendar.getInstance().apply { timeInMillis = tx.date }
-                    cal.get(Calendar.YEAR) == txCal.get(Calendar.YEAR) && cal.get(Calendar.WEEK_OF_YEAR) == txCal.get(Calendar.WEEK_OF_YEAR)
-                }
-                DateFilterType.THIS_MONTH -> DateUtils.isThisMonth(tx.date)
-                DateFilterType.LAST_MONTH -> {
-                    val cal = Calendar.getInstance().apply { add(Calendar.MONTH, -1) }
-                    val txCal = Calendar.getInstance().apply { timeInMillis = tx.date }
-                    cal.get(Calendar.YEAR) == txCal.get(Calendar.YEAR) && cal.get(Calendar.MONTH) == txCal.get(Calendar.MONTH)
-                }
-            }
+        val bounds: Pair<Long, Long>? = when (selectedPeriod) {
+            DateFilterType.ALL -> null
+            DateFilterType.TODAY -> DateUtils.getDayBounds(0)
+            DateFilterType.YESTERDAY -> DateUtils.getDayBounds(-1)
+            DateFilterType.THIS_WEEK -> DateUtils.getWeekBounds()
+            DateFilterType.THIS_MONTH -> DateUtils.getMonthBounds(0)
+            DateFilterType.LAST_MONTH -> DateUtils.getMonthBounds(-1)
         }
+        if (bounds == null) allTransactions
+        else allTransactions.filter { it.date in bounds.first..bounds.second }
     }
 
-    val totalIncome = filteredTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
-    val totalExpense = filteredTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+    val (totalIncome, totalExpense) = remember(filteredTransactions) {
+        var inc = 0.0
+        var exp = 0.0
+        for (tx in filteredTransactions) {
+            if (tx.type == TransactionType.INCOME) inc += tx.amount else exp += tx.amount
+        }
+        inc to exp
+    }
     val netSavings = totalIncome - totalExpense
     val savingsRate = if (totalIncome > 0) ((netSavings / totalIncome) * 100).coerceAtLeast(0.0).toInt() else 0
 
-    val totalReceivable = allDebts.filter { it.debt.debtType == DebtType.RECEIVABLE }.sumOf { it.remainingAmount }
-    val totalPayable = allDebts.filter { it.debt.debtType == DebtType.PAYABLE }.sumOf { it.remainingAmount }
+    val animatedIncome by animateFloatAsState(
+        targetValue = totalIncome.toFloat(),
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "anim_income"
+    )
+    val animatedExpense by animateFloatAsState(
+        targetValue = totalExpense.toFloat(),
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "anim_expense"
+    )
+    val animatedNet by animateFloatAsState(
+        targetValue = netSavings.toFloat(),
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "anim_net"
+    )
 
-    val expenseCategories = filteredTransactions.filter { it.type == TransactionType.EXPENSE }
-        .groupBy { it.category }
-        .mapValues { it.value.sumOf { tx -> tx.amount } }
-        .toList()
-        .sortedByDescending { it.second }
+    val (totalReceivable, totalPayable) = remember(allDebts) {
+        var rec = 0.0
+        var pay = 0.0
+        for (d in allDebts) {
+            if (d.debt.debtType == DebtType.RECEIVABLE) rec += d.remainingAmount else pay += d.remainingAmount
+        }
+        rec to pay
+    }
+
+    val expenseCategories = remember(filteredTransactions) {
+        filteredTransactions.filter { it.type == TransactionType.EXPENSE }
+            .groupBy { it.category }
+            .mapValues { it.value.sumOf { tx -> tx.amount } }
+            .toList()
+            .sortedByDescending { it.second }
+    }
+
+    val periodLabel = when (selectedPeriod) {
+        DateFilterType.ALL -> strings.periodAllTime
+        DateFilterType.TODAY -> strings.periodToday
+        DateFilterType.YESTERDAY -> strings.periodYesterday
+        DateFilterType.THIS_WEEK -> strings.periodThisWeek
+        DateFilterType.THIS_MONTH -> strings.periodThisMonth
+        DateFilterType.LAST_MONTH -> strings.periodLastMonth
+    }
+    val userName = (authState as? AuthState.Authenticated)?.user?.displayName ?: ""
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Top Bar
-        TopAppBar(
-            title = {
-                Text(
-                    text = "আয়-ব্যয় রিপোর্ট (Financial Report)",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            },
+        PremiumAppHeader(
+            title = strings.reportsTitle,
+            subtitle = periodLabel,
             actions = {
                 IconButton(
-                    onClick = {
-                        ExportUtils.exportReportSummary(
-                            context = context,
-                            totalIncome = totalIncome,
-                            totalExpense = totalExpense,
-                            balance = netSavings,
-                            totalReceivable = totalReceivable,
-                            totalPayable = totalPayable,
-                            transactions = filteredTransactions,
-                            currencySymbol = currencySymbol
-                        )
-                    },
+                    onClick = { showPdfDialog = true },
                     modifier = Modifier.testTag("share_financial_report_button")
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = "Share Report", tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        imageVector = Icons.Default.PictureAsPdf,
+                        contentDescription = strings.downloadPdfReportButton,
+                        tint = Color.White
+                    )
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            }
         )
 
-        // Time Period Filter
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(DateFilterType.values()) { period ->
+            items(DateFilterType.entries, key = { it.name }) { period ->
                 val label = when (period) {
-                    DateFilterType.ALL -> "সকল সময়"
-                    DateFilterType.TODAY -> "আজ"
-                    DateFilterType.YESTERDAY -> "গতকাল"
-                    DateFilterType.THIS_WEEK -> "এই সপ্তাহ"
-                    DateFilterType.THIS_MONTH -> "চলতি মাস"
-                    DateFilterType.LAST_MONTH -> "গত মাস"
+                    DateFilterType.ALL -> strings.periodAllTime
+                    DateFilterType.TODAY -> strings.periodToday
+                    DateFilterType.YESTERDAY -> strings.periodYesterday
+                    DateFilterType.THIS_WEEK -> strings.periodThisWeek
+                    DateFilterType.THIS_MONTH -> strings.periodThisMonth
+                    DateFilterType.LAST_MONTH -> strings.periodLastMonth
                 }
                 FilterChip(
                     selected = selectedPeriod == period,
@@ -179,175 +194,221 @@ fun ReportsScreen(
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 90.dp, top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Net Savings Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text("নেট সঞ্চয় / উদ্বৃত্ত (Net Savings)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    text = CurrencyUtils.formatAmount(netSavings, currencySymbol),
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (netSavings >= 0) IncomeGreen else ExpenseRed
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = IncomeGreen.copy(alpha = 0.15f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Savings, contentDescription = null, tint = IncomeGreen, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("$savingsRate% সঞ্চয়", fontWeight = FontWeight.Bold, color = IncomeGreen, style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            // Total Income
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                color = IncomeGreen.copy(alpha = 0.1f),
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text("মোট আয়", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(
-                                        text = CurrencyUtils.formatAmount(totalIncome, currencySymbol),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = IncomeGreen
-                                    )
-                                }
-                            }
-
-                            // Total Expense
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                color = ExpenseRed.copy(alpha = 0.1f),
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text("মোট ব্যয়", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(
-                                        text = CurrencyUtils.formatAmount(totalExpense, currencySymbol),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ExpenseRed
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Visual Donut Chart
-            item {
-                CategoryDonutChart(
-                    transactions = filteredTransactions,
-                    type = TransactionType.EXPENSE,
-                    currencySymbol = currencySymbol
-                )
-            }
-
-            // Category Breakdown List
-            item {
-                Text(
-                    text = "ক্যাটাগরি ভিত্তিক ব্যয়ের বিবরণ",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (expenseCategories.isEmpty()) {
-                item {
-                    Text(
-                        text = "এই সময়ে কোন ব্যয়ের হিসাব নেই",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                items(expenseCategories) { item ->
-                    val catName = item.first
-                    val catAmount = item.second
-                    val pct = if (totalExpense > 0) (catAmount / totalExpense).toFloat() else 0f
-
+        AnimatedContent(
+            targetState = selectedPeriod,
+            transitionSpec = {
+                fadeIn(tween(240)) togetherWith fadeOut(tween(180))
+            },
+            label = "report_period_transition"
+        ) { _ ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 100.dp, top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item(key = "net_savings_card", contentType = "summary") {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(18.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(catName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    text = CurrencyUtils.formatAmount(catAmount, currencySymbol),
-                                    fontWeight = FontWeight.Bold,
-                                    color = ExpenseRed
-                                )
+                                Column {
+                                    Text(
+                                        text = strings.netSavingsLabel,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = CurrencyUtils.formatAmount(animatedNet.toDouble(), currencySymbol),
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (netSavings >= 0) IncomeGreen else ExpenseRed
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = IncomeGreen.copy(alpha = 0.15f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Savings, contentDescription = null, tint = IncomeGreen, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "$savingsRate${strings.savingsRateSuffix}",
+                                            fontWeight = FontWeight.Bold,
+                                            color = IncomeGreen,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            LinearProgressIndicator(
-                                progress = { pct.coerceIn(0f, 1f) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp)),
-                                color = ExpenseRed,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    color = IncomeGreen.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(strings.totalIncomeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(
+                                            text = CurrencyUtils.formatAmount(animatedIncome.toDouble(), currencySymbol),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = IncomeGreen
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    color = ExpenseRed.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(strings.totalExpenseLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(
+                                            text = CurrencyUtils.formatAmount(animatedExpense.toDouble(), currencySymbol),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ExpenseRed
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            // Export Actions
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        ExportUtils.exportTransactionsToCsv(context, filteredTransactions, currencySymbol)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen)
-                ) {
-                    Icon(Icons.Default.FileDownload, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("এই সময়ের CSV রিপোর্ট ডাউনলোড ও শেয়ার করুন")
+                item(key = "donut_chart", contentType = "chart") {
+                    CategoryDonutChart(
+                        transactions = filteredTransactions,
+                        type = TransactionType.EXPENSE,
+                        currencySymbol = currencySymbol
+                    )
+                }
+
+                item(key = "cat_breakdown_header", contentType = "header") {
+                    Text(
+                        text = strings.categoryBreakdownTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (expenseCategories.isEmpty()) {
+                    item(key = "no_expense_item") {
+                        Text(
+                            text = strings.noExpenseInPeriod,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    items(
+                        items = expenseCategories,
+                        key = { it.first },
+                        contentType = { "category_bar" }
+                    ) { item ->
+                        val catName = item.first
+                        val catAmount = item.second
+                        val pct = if (totalExpense > 0) (catAmount / totalExpense).toFloat().coerceIn(0f, 1f) else 0f
+                        val animatedProgress by animateFloatAsState(
+                            targetValue = pct,
+                            animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+                            label = "cat_progress_$catName"
+                        )
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItem(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(catName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        text = CurrencyUtils.formatAmount(catAmount, currencySymbol),
+                                        fontWeight = FontWeight.Bold,
+                                        color = ExpenseRed
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = { animatedProgress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = ExpenseRed,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item(key = "pdf_export_button", contentType = "action") {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Button(
+                        onClick = { showPdfDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("download_pdf_report_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen)
+                    ) {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(strings.downloadPdfReportButton, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
+    }
+
+    if (showPdfDialog) {
+        PdfExportDialog(
+            reportTitle = "${strings.reportsTitle} ($periodLabel)",
+            suggestedFileName = "InExTracker_Report_${System.currentTimeMillis()}.pdf",
+            generatePdf = {
+                ExportUtils.generateFinancialReportPdfFile(
+                    context = context,
+                    periodLabel = periodLabel,
+                    totalIncome = totalIncome,
+                    totalExpense = totalExpense,
+                    balance = netSavings,
+                    totalReceivable = totalReceivable,
+                    totalPayable = totalPayable,
+                    transactions = filteredTransactions,
+                    currencySymbol = currencySymbol,
+                    lang = lang,
+                    userName = userName
+                )
+            },
+            onDismiss = { showPdfDialog = false }
+        )
     }
 }

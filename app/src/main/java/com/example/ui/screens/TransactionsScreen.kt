@@ -5,28 +5,21 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -35,8 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,23 +35,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.local.entity.PaymentMethod
+import com.example.auth.AuthState
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionType
-import com.example.ui.components.AdMobBannerView
+import com.example.ui.components.PdfExportDialog
+import com.example.ui.components.PremiumAppHeader
+import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
-import com.example.ui.theme.PrimaryGreen
 import com.example.ui.viewmodel.DateFilterType
 import com.example.ui.viewmodel.MainViewModel
 import com.example.utils.ExportUtils
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsScreen(
     viewModel: MainViewModel,
@@ -68,114 +61,113 @@ fun TransactionsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
+    val lang = LocalAppLanguage.current
     val transactions by viewModel.filteredTransactions.collectAsStateWithLifecycle()
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val currencySymbol by viewModel.currencySymbol.collectAsStateWithLifecycle()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
 
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val filterType by viewModel.filterType.collectAsStateWithLifecycle()
     val filterDateRange by viewModel.filterDateRange.collectAsStateWithLifecycle()
-    val filterPaymentMethod by viewModel.filterPaymentMethod.collectAsStateWithLifecycle()
 
     var transactionToDelete by remember { mutableStateOf<TransactionEntity?>(null) }
+    var showPdfExportDialog by remember { mutableStateOf(false) }
+
+    val userName = (authState as? AuthState.Authenticated)?.user?.displayName ?: ""
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Top App Bar
-        TopAppBar(
-            title = {
-                Text(
-                    text = "সব লেনদেন (Transactions)",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            },
+        PremiumAppHeader(
+            title = strings.allTransactionsTitle,
+            subtitle = "${transactions.size} ${if (lang == "bn") "টি লেনদেন" else "records"}",
             actions = {
                 IconButton(
-                    onClick = {
-                        ExportUtils.exportTransactionsToCsv(context, allTransactions, currencySymbol)
-                    },
-                    modifier = Modifier.testTag("export_transactions_csv_button")
+                    onClick = { showPdfExportDialog = true },
+                    modifier = Modifier.testTag("export_transactions_pdf_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.FileDownload,
-                        contentDescription = "Export CSV",
-                        tint = MaterialTheme.colorScheme.primary
+                        imageVector = Icons.Default.PictureAsPdf,
+                        contentDescription = strings.downloadPdfReportButton,
+                        tint = Color.White
                     )
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            }
         )
 
-        // Search Bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { viewModel.searchQuery.value = it },
-            placeholder = { Text("বিবরণ, ক্যাটাগরি বা পরিমাণ খুঁজুন…") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            placeholder = { Text(strings.searchTransactionsHint) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { viewModel.searchQuery.value = "" }) {
-                        Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        Icon(Icons.Default.Clear, contentDescription = strings.closeLabel)
                     }
                 }
             },
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
                 .testTag("transaction_search_input"),
             singleLine = true
         )
 
-        // Type Filter Chips (All, Income, Expense)
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(bottom = 6.dp)
+            modifier = Modifier.padding(bottom = 4.dp)
         ) {
-            item {
+            item(key = "type_all") {
                 FilterChip(
                     selected = filterType == null,
                     onClick = { viewModel.filterType.value = null },
-                    label = { Text("সব (All)") }
+                    label = { Text(strings.filterAll) }
                 )
             }
-            item {
+            item(key = "type_income") {
                 FilterChip(
                     selected = filterType == TransactionType.INCOME,
-                    onClick = { viewModel.filterType.value = if (filterType == TransactionType.INCOME) null else TransactionType.INCOME },
-                    label = { Text("+ আয় (Income)") },
+                    onClick = {
+                        viewModel.filterType.value =
+                            if (filterType == TransactionType.INCOME) null else TransactionType.INCOME
+                    },
+                    label = { Text(strings.filterIncome) },
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = IncomeGreen.copy(alpha = 0.2f))
                 )
             }
-            item {
+            item(key = "type_expense") {
                 FilterChip(
                     selected = filterType == TransactionType.EXPENSE,
-                    onClick = { viewModel.filterType.value = if (filterType == TransactionType.EXPENSE) null else TransactionType.EXPENSE },
-                    label = { Text("- ব্যয় (Expense)") },
+                    onClick = {
+                        viewModel.filterType.value =
+                            if (filterType == TransactionType.EXPENSE) null else TransactionType.EXPENSE
+                    },
+                    label = { Text(strings.filterExpense) },
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ExpenseRed.copy(alpha = 0.2f))
                 )
             }
         }
 
-        // Date Filter Chips
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(bottom = 8.dp)
         ) {
-            items(DateFilterType.values()) { dateType ->
+            items(DateFilterType.entries, key = { it.name }) { dateType ->
                 val label = when (dateType) {
-                    DateFilterType.ALL -> "সকল সময়"
-                    DateFilterType.TODAY -> "আজ"
-                    DateFilterType.YESTERDAY -> "গতকাল"
-                    DateFilterType.THIS_WEEK -> "এই সপ্তাহ"
-                    DateFilterType.THIS_MONTH -> "চলতি মাস"
-                    DateFilterType.LAST_MONTH -> "গত মাস"
+                    DateFilterType.ALL -> strings.periodAllTime
+                    DateFilterType.TODAY -> strings.periodToday
+                    DateFilterType.YESTERDAY -> strings.periodYesterday
+                    DateFilterType.THIS_WEEK -> strings.periodThisWeek
+                    DateFilterType.THIS_MONTH -> strings.periodThisMonth
+                    DateFilterType.LAST_MONTH -> strings.periodLastMonth
                 }
                 FilterChip(
                     selected = filterDateRange == dateType,
@@ -185,7 +177,6 @@ fun TransactionsScreen(
             }
         }
 
-        // Transactions List
         if (transactions.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -200,15 +191,15 @@ fun TransactionsScreen(
                         modifier = Modifier.size(56.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "কোন লেনদেন পাওয়া যায়নি",
+                        text = strings.noMatchingTransactions,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "ফিল্টার পরিবর্তন করুন বা নতুন লেনদেন যোগ করুন",
+                        text = strings.changeFilterHint,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -216,10 +207,14 @@ fun TransactionsScreen(
             }
         } else {
             LazyColumn(
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 90.dp, top = 4.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 100.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(transactions, key = { it.id }) { tx ->
+                items(
+                    items = transactions,
+                    key = { it.id },
+                    contentType = { "tx_card" }
+                ) { tx ->
                     TransactionItemCard(
                         transaction = tx,
                         currencySymbol = currencySymbol,
@@ -230,12 +225,29 @@ fun TransactionsScreen(
         }
     }
 
-    // Delete Confirmation Dialog
+    if (showPdfExportDialog) {
+        val listToExport = transactions.ifEmpty { allTransactions }
+        PdfExportDialog(
+            reportTitle = strings.allTransactionsTitle,
+            suggestedFileName = "InExTracker_Transactions_${System.currentTimeMillis()}.pdf",
+            generatePdf = {
+                ExportUtils.generateTransactionsPdfFile(
+                    context = context,
+                    transactions = listToExport,
+                    currencySymbol = currencySymbol,
+                    lang = lang,
+                    userName = userName
+                )
+            },
+            onDismiss = { showPdfExportDialog = false }
+        )
+    }
+
     transactionToDelete?.let { tx ->
         AlertDialog(
             onDismissRequest = { transactionToDelete = null },
-            title = { Text("লেনদেন মুছবেন?") },
-            text = { Text("${tx.category} - ${tx.amount} এর এই লেনদেনটি কি মুছে ফেলতে চান?") },
+            title = { Text(strings.deleteTransactionTitle) },
+            text = { Text("${tx.category} — ${tx.amount} (${strings.deleteTransactionConfirm})") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -243,12 +255,12 @@ fun TransactionsScreen(
                         transactionToDelete = null
                     }
                 ) {
-                    Text("মুছুন", color = ExpenseRed, fontWeight = FontWeight.Bold)
+                    Text(strings.deleteAction, color = ExpenseRed, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { transactionToDelete = null }) {
-                    Text("বাতিল")
+                    Text(strings.cancelAction)
                 }
             }
         )

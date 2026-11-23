@@ -12,18 +12,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -40,12 +43,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,11 +64,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ads.AdManager
 import com.example.data.local.entity.DebtPaymentEntity
 import com.example.data.local.entity.DebtType
 import com.example.data.local.entity.PaymentMethod
 import com.example.data.repository.DebtWithPayments
 import com.example.ui.components.AdMobBannerView
+import com.example.ui.components.BottomSheetKeyboardBackHandler
+import com.example.ui.components.PremiumAppHeader
+import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.DebtPayable
 import com.example.ui.theme.DebtReceivable
 import com.example.ui.theme.ExpenseRed
@@ -76,8 +82,8 @@ import com.example.ui.theme.PrimaryGreen
 import com.example.ui.viewmodel.MainViewModel
 import com.example.utils.CurrencyUtils
 import com.example.utils.DateUtils
+import com.example.utils.findActivity
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DebtPersonDetailScreen(
     debtId: String,
@@ -87,6 +93,8 @@ fun DebtPersonDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
+    val lang = LocalAppLanguage.current
     val allDebtsWithPayments by viewModel.debtsWithPayments.collectAsStateWithLifecycle()
     val currencySymbol by viewModel.currencySymbol.collectAsStateWithLifecycle()
 
@@ -108,24 +116,28 @@ fun DebtPersonDetailScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .navigationBarsPadding()
     ) {
-        // Top Bar
-        TopAppBar(
-            title = { Text(debt.personName, fontWeight = FontWeight.Bold) },
+        PremiumAppHeader(
+            title = debt.personName,
+            subtitle = if (isReceivable) strings.receivable else strings.payable,
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
                 }
             },
             actions = {
                 IconButton(onClick = onEditDebt) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.White)
                 }
                 IconButton(onClick = { showDeleteConfirm = true }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ExpenseRed)
+                    Icon(Icons.Default.Delete, contentDescription = strings.deleteAction, tint = Color(0xFFFCA5A5))
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            }
         )
 
         AdMobBannerView()
@@ -135,8 +147,7 @@ fun DebtPersonDetailScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Profile & Contact Card
-            item {
+            item(key = "debt_profile_card") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -172,14 +183,13 @@ fun DebtPersonDetailScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = if (debt.phoneNumber.isNotBlank()) debt.phoneNumber else "কোন ফোন নম্বর নেই",
+                                        text = if (debt.phoneNumber.isNotBlank()) debt.phoneNumber else strings.noPhoneNumber,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
 
-                            // Call button if phone exists
                             if (debt.phoneNumber.isNotBlank()) {
                                 IconButton(
                                     onClick = {
@@ -197,19 +207,27 @@ fun DebtPersonDetailScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Share Reminder SMS / WhatsApp Button
                         Button(
                             onClick = {
-                                val message = if (isReceivable) {
-                                    "প্রিয় ${debt.personName}, আপনার কাছে ${CurrencyUtils.formatAmount(item.remainingAmount, currencySymbol)} পাওনা আছে। অনুগ্রহ করে পরিশোধ করুন। ধন্যবাদ।"
+                                val amtStr = CurrencyUtils.formatAmount(item.remainingAmount, currencySymbol)
+                                val message = if (lang == "en") {
+                                    if (isReceivable) {
+                                        "Hi ${debt.personName}, this is a gentle reminder of the receivable balance of $amtStr. Thank you."
+                                    } else {
+                                        "Hi ${debt.personName}, I have a pending payable balance of $amtStr with you and will settle it soon. Thank you."
+                                    }
                                 } else {
-                                    "প্রিয় ${debt.personName}, আপনার কাছে আমার ${CurrencyUtils.formatAmount(item.remainingAmount, currencySymbol)} দেনা আছে। আমি শীঘ্রই পরিশোধ করবো। ধন্যবাদ।"
+                                    if (isReceivable) {
+                                        "প্রিয় ${debt.personName}, আপনার কাছে $amtStr পাওনা রয়েছে। অনুগ্রহ করে সুবিধামতো পরিশোধ করুন। ধন্যবাদ।"
+                                    } else {
+                                        "প্রিয় ${debt.personName}, আপনার কাছে আমার $amtStr দেনা রয়েছে। আমি শীঘ্রই পরিশোধ করবো। ধন্যবাদ।"
+                                    }
                                 }
                                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, message)
                                 }
-                                context.startActivity(Intent.createChooser(sendIntent, "তাগাদা বার্তা পাঠান"))
+                                context.startActivity(Intent.createChooser(sendIntent, strings.shareReminderChooser))
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
@@ -217,14 +235,13 @@ fun DebtPersonDetailScreen(
                         ) {
                             Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("তাগাদা বার্তা বা রসিদ পাঠান", color = MaterialTheme.colorScheme.onSurface)
+                            Text(strings.sendReminderButton, color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
             }
 
-            // Financial Summary Card
-            item {
+            item(key = "debt_summary_card") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -237,7 +254,7 @@ fun DebtPersonDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
-                                Text("মোট পরিমাণ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(strings.totalAmountLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     text = CurrencyUtils.formatAmount(debt.totalAmount, currencySymbol),
                                     style = MaterialTheme.typography.titleMedium,
@@ -245,7 +262,7 @@ fun DebtPersonDetailScreen(
                                 )
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("পরিশোধ হয়েছে", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(strings.paidAmountLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     text = CurrencyUtils.formatAmount(item.totalPaid, currencySymbol),
                                     style = MaterialTheme.typography.titleMedium,
@@ -254,7 +271,7 @@ fun DebtPersonDetailScreen(
                                 )
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("বাকি পরিমাণ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(strings.remainingAmountLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     text = CurrencyUtils.formatAmount(item.remainingAmount, currencySymbol),
                                     style = MaterialTheme.typography.headlineSmall,
@@ -267,7 +284,7 @@ fun DebtPersonDetailScreen(
                         if (debt.dueDate != null) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "পরিশোধের শেষ তারিখ: ${DateUtils.formatDate(debt.dueDate)}",
+                                text = "${strings.dueDatePrefix}: ${DateUtils.formatDate(debt.dueDate, lang)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -276,7 +293,7 @@ fun DebtPersonDetailScreen(
                         if (debt.note.isNotBlank()) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "নোট: ${debt.note}",
+                                text = debt.note,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -284,7 +301,6 @@ fun DebtPersonDetailScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Add Payment Button
                         Button(
                             onClick = { showAddPaymentDialog = true },
                             modifier = Modifier
@@ -295,32 +311,30 @@ fun DebtPersonDetailScreen(
                         ) {
                             Icon(Icons.Default.Payment, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("জমা / পরিশোধ এন্ট্রি দিন (Add Payment)", fontWeight = FontWeight.Bold)
+                            Text(strings.addPaymentButton, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
-            // Payment History Header
-            item {
+            item(key = "payment_history_header") {
                 Text(
-                    text = "পরিশোধের ইতিহাস (Payment History)",
+                    text = strings.paymentHistoryTitle,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            // Payment History Items
             if (item.payments.isEmpty()) {
-                item {
+                item(key = "no_payments") {
                     Text(
-                        text = "এখনও কোন টাকা পরিশোধ করা হয়নি",
+                        text = strings.noPaymentYet,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
-                items(item.payments) { pmt ->
+                items(item.payments, key = { it.id }, contentType = { "debt_payment" }) { pmt ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
@@ -352,7 +366,7 @@ fun DebtPersonDetailScreen(
                                         color = IncomeGreen
                                     )
                                     Text(
-                                        text = "${DateUtils.formatDate(pmt.date)} • ${pmt.paymentMethod.name}",
+                                        text = "${DateUtils.formatDate(pmt.date, lang)} • ${pmt.paymentMethod.name}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -367,7 +381,7 @@ fun DebtPersonDetailScreen(
                             }
 
                             IconButton(onClick = { paymentToDelete = pmt }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete Payment", tint = ExpenseRed, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Delete, contentDescription = strings.deleteAction, tint = ExpenseRed, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -376,7 +390,6 @@ fun DebtPersonDetailScreen(
         }
     }
 
-    // Add Payment Bottom Sheet
     if (showAddPaymentDialog) {
         AddPaymentSheet(
             debtWithPayments = item,
@@ -384,17 +397,17 @@ fun DebtPersonDetailScreen(
             onDismiss = { showAddPaymentDialog = false },
             onSave = { amount, date, method, note ->
                 viewModel.addDebtPayment(debt.id, amount, date, note, method)
+                AdManager.maybeShowInterstitialAfterSave(context.findActivity())
                 showAddPaymentDialog = false
             }
         )
     }
 
-    // Delete Debt Dialog
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("খাতা রেকর্ড মুছবেন?") },
-            text = { Text("${debt.personName} এর এই খাতা এন্ট্রি মুছে ফেলতে চান?") },
+            title = { Text(strings.deleteDebtTitle) },
+            text = { Text("${debt.personName} — ${strings.deleteDebtConfirm}") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -403,23 +416,22 @@ fun DebtPersonDetailScreen(
                         onBack()
                     }
                 ) {
-                    Text("মুছুন", color = ExpenseRed, fontWeight = FontWeight.Bold)
+                    Text(strings.deleteAction, color = ExpenseRed, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("বাতিল")
+                    Text(strings.cancelAction)
                 }
             }
         )
     }
 
-    // Delete Payment Confirmation
     paymentToDelete?.let { pmt ->
         AlertDialog(
             onDismissRequest = { paymentToDelete = null },
-            title = { Text("পেমেন্ট রেকর্ড মুছবেন?") },
-            text = { Text("${pmt.amount} টাকার পরিশোধ রেকর্ড মুছে ফেলতে চান?") },
+            title = { Text(strings.deletePaymentTitle) },
+            text = { Text("${CurrencyUtils.formatAmount(pmt.amount, currencySymbol)} — ${strings.deletePaymentConfirm}") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -427,12 +439,12 @@ fun DebtPersonDetailScreen(
                         paymentToDelete = null
                     }
                 ) {
-                    Text("মুছুন", color = ExpenseRed, fontWeight = FontWeight.Bold)
+                    Text(strings.deleteAction, color = ExpenseRed, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { paymentToDelete = null }) {
-                    Text("বাতিল")
+                    Text(strings.cancelAction)
                 }
             }
         )
@@ -447,8 +459,14 @@ fun AddPaymentSheet(
     onDismiss: () -> Unit,
     onSave: (amount: Double, date: Long, method: PaymentMethod, note: String) -> Unit
 ) {
+    val strings = LocalAppStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var amountText by remember { mutableStateOf(if (debtWithPayments.remainingAmount % 1.0 == 0.0) debtWithPayments.remainingAmount.toInt().toString() else debtWithPayments.remainingAmount.toString()) }
+    var amountText by remember {
+        mutableStateOf(
+            if (debtWithPayments.remainingAmount % 1.0 == 0.0) debtWithPayments.remainingAmount.toInt().toString()
+            else debtWithPayments.remainingAmount.toString()
+        )
+    }
     var selectedMethod by remember { mutableStateOf(PaymentMethod.CASH) }
     var noteText by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -456,21 +474,29 @@ fun AddPaymentSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surface,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false)
     ) {
+        BottomSheetKeyboardBackHandler(
+            sheetState = sheetState,
+            onDismiss = onDismiss
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp)
+                .padding(bottom = 28.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = "পরিশোধ / জমা এন্ট্রি দিন",
+                text = strings.addPaymentSheetTitle,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "${debtWithPayments.debt.personName} • বাকি: ${CurrencyUtils.formatAmount(debtWithPayments.remainingAmount, currencySymbol)}",
+                text = "${debtWithPayments.debt.personName} • ${strings.remainingAmountLabel}: ${CurrencyUtils.formatAmount(debtWithPayments.remainingAmount, currencySymbol)}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -483,7 +509,7 @@ fun AddPaymentSheet(
                     amountText = it
                     errorMessage = null
                 },
-                label = { Text("জমা টাকার পরিমাণ") },
+                label = { Text(strings.depositAmountLabel) },
                 prefix = { Text("$currencySymbol ", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 shape = RoundedCornerShape(16.dp),
@@ -495,13 +521,13 @@ fun AddPaymentSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text("পেমেন্ট মাধ্যম", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(strings.paymentMethodLabel, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(6.dp))
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(PaymentMethod.values()) { pm ->
+                items(PaymentMethod.entries, key = { it.name }) { pm ->
                     FilterChip(
                         selected = selectedMethod == pm,
                         onClick = { selectedMethod = pm },
@@ -515,7 +541,7 @@ fun AddPaymentSheet(
             OutlinedTextField(
                 value = noteText,
                 onValueChange = { noteText = it },
-                label = { Text("নোট (ঐচ্ছিক)") },
+                label = { Text(strings.noteOptionalLabel) },
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
@@ -532,7 +558,7 @@ fun AddPaymentSheet(
                 onClick = {
                     val amount = amountText.toDoubleOrNull()
                     if (amount == null || amount <= 0) {
-                        errorMessage = "সঠিক টাকার পরিমাণ লিখুন"
+                        errorMessage = strings.enterValidAmountError
                         return@Button
                     }
                     onSave(amount, System.currentTimeMillis(), selectedMethod, noteText)
@@ -543,7 +569,7 @@ fun AddPaymentSheet(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen)
             ) {
-                Text("জমা নিশ্চিত করুন", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(strings.confirmPaymentButton, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
     }

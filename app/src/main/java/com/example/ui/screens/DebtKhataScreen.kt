@@ -20,19 +20,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Handshake
-import androidx.compose.material.icons.filled.Payment
-import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -44,10 +39,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -59,24 +53,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.auth.AuthState
 import com.example.data.local.entity.DebtStatus
 import com.example.data.local.entity.DebtType
 import com.example.data.repository.DebtWithPayments
-import com.example.ui.components.AdMobBannerView
+import com.example.ui.components.PdfExportDialog
+import com.example.ui.components.PremiumAppHeader
+import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.theme.AccentGold
 import com.example.ui.theme.DebtPayable
 import com.example.ui.theme.DebtReceivable
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
-import com.example.ui.theme.PrimaryGreen
 import com.example.ui.viewmodel.MainViewModel
 import com.example.utils.CurrencyUtils
 import com.example.utils.DateUtils
 import com.example.utils.ExportUtils
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DebtKhataScreen(
     viewModel: MainViewModel,
@@ -84,54 +79,57 @@ fun DebtKhataScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
+    val lang = LocalAppLanguage.current
     val debtsWithPayments by viewModel.filteredDebts.collectAsStateWithLifecycle()
     val allDebtsWithPayments by viewModel.debtsWithPayments.collectAsStateWithLifecycle()
     val currencySymbol by viewModel.currencySymbol.collectAsStateWithLifecycle()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
 
     val searchQuery by viewModel.debtSearchQuery.collectAsStateWithLifecycle()
-    val filterType by viewModel.debtFilterType.collectAsStateWithLifecycle()
     val filterStatus by viewModel.debtFilterStatus.collectAsStateWithLifecycle()
 
-    var selectedTab by remember { mutableStateOf(0) } // 0: পাওনা (Receivable), 1: দেনা (Payable)
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Receivable, 1: Payable
+    var showPdfExportDialog by remember { mutableStateOf(false) }
 
     val currentTabType = if (selectedTab == 0) DebtType.RECEIVABLE else DebtType.PAYABLE
-    val displayedDebts = debtsWithPayments.filter { it.debt.debtType == currentTabType }
+    val displayedDebts = remember(debtsWithPayments, currentTabType) {
+        debtsWithPayments.filter { it.debt.debtType == currentTabType }
+    }
 
-    val totalReceivable = allDebtsWithPayments.filter { it.debt.debtType == DebtType.RECEIVABLE }.sumOf { it.remainingAmount }
-    val totalPayable = allDebtsWithPayments.filter { it.debt.debtType == DebtType.PAYABLE }.sumOf { it.remainingAmount }
+    val (totalReceivable, totalPayable) = remember(allDebtsWithPayments) {
+        var rec = 0.0
+        var pay = 0.0
+        for (d in allDebtsWithPayments) {
+            if (d.debt.debtType == DebtType.RECEIVABLE) rec += d.remainingAmount else pay += d.remainingAmount
+        }
+        rec to pay
+    }
+
+    val userName = (authState as? AuthState.Authenticated)?.user?.displayName ?: ""
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Top Bar
-        TopAppBar(
-            title = {
-                Text(
-                    text = "দেনা-পাওনা খাতা (Debt Book)",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            },
+        PremiumAppHeader(
+            title = strings.debtBookTitle,
+            subtitle = "${allDebtsWithPayments.size} ${if (lang == "bn") "টি হিসাব" else "entries"}",
             actions = {
                 IconButton(
-                    onClick = {
-                        ExportUtils.exportDebtsToCsv(context, allDebtsWithPayments, currencySymbol)
-                    },
-                    modifier = Modifier.testTag("export_debts_csv_button")
+                    onClick = { showPdfExportDialog = true },
+                    modifier = Modifier.testTag("export_debts_pdf_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.FileDownload,
-                        contentDescription = "Export CSV",
-                        tint = MaterialTheme.colorScheme.primary
+                        imageVector = Icons.Default.PictureAsPdf,
+                        contentDescription = strings.downloadPdfReportButton,
+                        tint = Color.White
                     )
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            }
         )
 
-        // Tab Selector: পাওনা (Receivable) vs দেনা (Payable)
         TabRow(
             selectedTabIndex = selectedTab,
             containerColor = MaterialTheme.colorScheme.surface,
@@ -143,7 +141,7 @@ fun DebtKhataScreen(
                 text = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "পাওনা টাকা (আমি পাবো)",
+                            text = strings.receivableTabTitle,
                             fontWeight = FontWeight.Bold,
                             color = if (selectedTab == 0) DebtReceivable else Color.Gray
                         )
@@ -162,7 +160,7 @@ fun DebtKhataScreen(
                 text = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "দেনা টাকা (আমাকে দিতে হবে)",
+                            text = strings.payableTabTitle,
                             fontWeight = FontWeight.Bold,
                             color = if (selectedTab == 1) DebtPayable else Color.Gray
                         )
@@ -177,73 +175,82 @@ fun DebtKhataScreen(
             )
         }
 
-        // Search Bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { viewModel.debtSearchQuery.value = it },
-            placeholder = { Text("নাম, ফোন নম্বর বা নোট খুঁজুন…") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            placeholder = { Text(strings.searchDebtHint) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { viewModel.debtSearchQuery.value = "" }) {
-                        Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        Icon(Icons.Default.Clear, contentDescription = strings.closeLabel)
                     }
                 }
             },
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
                 .testTag("debt_search_input"),
             singleLine = true
         )
 
-        // Status Filter Chips
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(bottom = 8.dp)
         ) {
-            item {
+            item(key = "debt_status_all") {
                 FilterChip(
                     selected = filterStatus == null,
                     onClick = { viewModel.debtFilterStatus.value = null },
-                    label = { Text("সব (All)") }
+                    label = { Text(strings.filterAll) }
                 )
             }
-            item {
+            item(key = "debt_status_pending") {
                 FilterChip(
                     selected = filterStatus == DebtStatus.PENDING,
-                    onClick = { viewModel.debtFilterStatus.value = if (filterStatus == DebtStatus.PENDING) null else DebtStatus.PENDING },
-                    label = { Text("বাকি (Pending)") }
+                    onClick = {
+                        viewModel.debtFilterStatus.value =
+                            if (filterStatus == DebtStatus.PENDING) null else DebtStatus.PENDING
+                    },
+                    label = { Text(strings.statusPending) }
                 )
             }
-            item {
+            item(key = "debt_status_partial") {
                 FilterChip(
                     selected = filterStatus == DebtStatus.PARTIALLY_PAID,
-                    onClick = { viewModel.debtFilterStatus.value = if (filterStatus == DebtStatus.PARTIALLY_PAID) null else DebtStatus.PARTIALLY_PAID },
-                    label = { Text("আংশিক পরিশোধ") }
+                    onClick = {
+                        viewModel.debtFilterStatus.value =
+                            if (filterStatus == DebtStatus.PARTIALLY_PAID) null else DebtStatus.PARTIALLY_PAID
+                    },
+                    label = { Text(strings.statusPartiallyPaid) }
                 )
             }
-            item {
+            item(key = "debt_status_overdue") {
                 FilterChip(
                     selected = filterStatus == DebtStatus.OVERDUE,
-                    onClick = { viewModel.debtFilterStatus.value = if (filterStatus == DebtStatus.OVERDUE) null else DebtStatus.OVERDUE },
-                    label = { Text("মেয়াদোত্তীর্ণ (Overdue)") },
+                    onClick = {
+                        viewModel.debtFilterStatus.value =
+                            if (filterStatus == DebtStatus.OVERDUE) null else DebtStatus.OVERDUE
+                    },
+                    label = { Text(strings.statusOverdue) },
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = ExpenseRed.copy(alpha = 0.2f))
                 )
             }
-            item {
+            item(key = "debt_status_paid") {
                 FilterChip(
                     selected = filterStatus == DebtStatus.PAID,
-                    onClick = { viewModel.debtFilterStatus.value = if (filterStatus == DebtStatus.PAID) null else DebtStatus.PAID },
-                    label = { Text("পরিশোধিত (Paid)") },
+                    onClick = {
+                        viewModel.debtFilterStatus.value =
+                            if (filterStatus == DebtStatus.PAID) null else DebtStatus.PAID
+                    },
+                    label = { Text(strings.statusPaid) },
                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = IncomeGreen.copy(alpha = 0.2f))
                 )
             }
         }
 
-        // Debts List
         if (displayedDebts.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -260,13 +267,13 @@ fun DebtKhataScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = if (selectedTab == 0) "কোন পাওনা রেকর্ড নেই" else "কোন দেনা রেকর্ড নেই",
+                        text = if (selectedTab == 0) strings.noReceivableTitle else strings.noPayableTitle,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "নতুন খাতা এন্ট্রি যোগ করতে নিচের (+) বাটনে চাপুন",
+                        text = strings.addDebtHint,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -274,10 +281,14 @@ fun DebtKhataScreen(
             }
         } else {
             LazyColumn(
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 90.dp, top = 4.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 100.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(displayedDebts, key = { it.debt.id }) { item ->
+                items(
+                    items = displayedDebts,
+                    key = { it.debt.id },
+                    contentType = { "debt_card" }
+                ) { item ->
                     DebtItemCard(
                         debtWithPayments = item,
                         currencySymbol = currencySymbol,
@@ -286,6 +297,23 @@ fun DebtKhataScreen(
                 }
             }
         }
+    }
+
+    if (showPdfExportDialog) {
+        PdfExportDialog(
+            reportTitle = strings.debtBookTitle,
+            suggestedFileName = "InExTracker_DebtBook_${System.currentTimeMillis()}.pdf",
+            generatePdf = {
+                ExportUtils.generateDebtsPdfFile(
+                    context = context,
+                    debts = allDebtsWithPayments,
+                    currencySymbol = currencySymbol,
+                    lang = lang,
+                    userName = userName
+                )
+            },
+            onDismiss = { showPdfExportDialog = false }
+        )
     }
 }
 
@@ -296,11 +324,14 @@ fun DebtItemCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
+    val lang = LocalAppLanguage.current
     val debt = debtWithPayments.debt
     val isReceivable = debt.debtType == DebtType.RECEIVABLE
     val accentColor = if (isReceivable) DebtReceivable else DebtPayable
 
     val progress = if (debt.totalAmount > 0) (debtWithPayments.totalPaid / debt.totalAmount).toFloat() else 0f
+    val formattedDue = remember(debt.dueDate, lang) { debt.dueDate?.let { DateUtils.formatDate(it, lang) } }
 
     Card(
         modifier = modifier
@@ -349,7 +380,6 @@ fun DebtItemCard(
                     }
                 }
 
-                // Status Badge
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = when (debtWithPayments.status) {
@@ -361,10 +391,10 @@ fun DebtItemCard(
                 ) {
                     Text(
                         text = when (debtWithPayments.status) {
-                            DebtStatus.PAID -> "পরিশোধিত"
-                            DebtStatus.OVERDUE -> "মেয়াদোত্তীর্ণ"
-                            DebtStatus.PARTIALLY_PAID -> "আংশিক বাকি"
-                            DebtStatus.PENDING -> "বাকি"
+                            DebtStatus.PAID -> strings.statusPaid
+                            DebtStatus.OVERDUE -> strings.statusOverdue
+                            DebtStatus.PARTIALLY_PAID -> strings.statusPartiallyPaid
+                            DebtStatus.PENDING -> strings.statusPending
                         },
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
@@ -381,14 +411,13 @@ fun DebtItemCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Amounts Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
                     Text(
-                        text = "মোট দেনা/পাওনা",
+                        text = strings.totalAmountLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -400,7 +429,7 @@ fun DebtItemCard(
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "পরিশোধ হয়েছে",
+                        text = strings.paidAmountLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -413,7 +442,7 @@ fun DebtItemCard(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "অবশিষ্ট বাকি",
+                        text = strings.remainingAmountLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -428,7 +457,6 @@ fun DebtItemCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Progress Bar
             LinearProgressIndicator(
                 progress = { progress.coerceIn(0f, 1f) },
                 modifier = Modifier
@@ -439,15 +467,14 @@ fun DebtItemCard(
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
 
-            // Due Date or Note footer
-            if (debt.dueDate != null || debt.note.isNotBlank()) {
+            if (formattedDue != null || debt.note.isNotBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (debt.dueDate != null) {
+                    if (formattedDue != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.CalendarMonth,
@@ -457,7 +484,7 @@ fun DebtItemCard(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "মেয়াদ: ${DateUtils.formatDate(debt.dueDate)}",
+                                text = "${strings.dueLabel}: $formattedDue",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (debtWithPayments.status == DebtStatus.OVERDUE) ExpenseRed else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -467,8 +494,8 @@ fun DebtItemCard(
                     }
 
                     Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = "Open Details",
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )

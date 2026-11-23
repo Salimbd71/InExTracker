@@ -51,6 +51,9 @@ interface TransactionDao {
 
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun hardDeleteTransaction(id: String)
+
+    @Query("DELETE FROM transactions WHERE userId = :userId")
+    suspend fun deleteAllForUser(userId: String)
 }
 
 @Dao
@@ -78,6 +81,9 @@ interface DebtDao {
 
     @Query("DELETE FROM debts WHERE id = :id")
     suspend fun hardDeleteDebt(id: String)
+
+    @Query("DELETE FROM debts WHERE userId = :userId")
+    suspend fun deleteAllForUser(userId: String)
 }
 
 @Dao
@@ -99,6 +105,9 @@ interface DebtPaymentDao {
 
     @Query("UPDATE debt_payments SET isDeleted = 1, deletedAt = :timestamp, syncStatus = 'PENDING_DELETE', updatedAt = :timestamp WHERE id = :id")
     suspend fun softDeletePayment(id: String, timestamp: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM debt_payments WHERE userId = :userId")
+    suspend fun deleteAllForUser(userId: String)
 }
 
 @Dao
@@ -117,6 +126,9 @@ interface CategoryDao {
 
     @Query("UPDATE categories SET isDeleted = 1, syncStatus = 'PENDING_DELETE' WHERE id = :id")
     suspend fun softDeleteCategory(id: String)
+
+    @Query("DELETE FROM categories WHERE userId = :userId")
+    suspend fun deleteAllForUser(userId: String)
 }
 
 @Dao
@@ -132,6 +144,9 @@ interface BudgetDao {
 
     @Query("UPDATE budgets SET isDeleted = 1, syncStatus = 'PENDING_DELETE' WHERE id = :id")
     suspend fun softDeleteBudget(id: String)
+
+    @Query("DELETE FROM budgets WHERE userId = :userId")
+    suspend fun deleteAllForUser(userId: String)
 }
 
 @Dao
@@ -153,6 +168,9 @@ interface RecurringDao {
 
     @Query("UPDATE recurring_transactions SET isDeleted = 1, syncStatus = 'PENDING_DELETE' WHERE id = :id")
     suspend fun softDeleteRecurring(id: String)
+
+    @Query("DELETE FROM recurring_transactions WHERE userId = :userId")
+    suspend fun deleteAllForUser(userId: String)
 }
 
 @Dao
@@ -165,4 +183,7 @@ interface SyncMetaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun updateSyncMeta(meta: SyncMetaEntity)
+
+    @Query("DELETE FROM sync_meta WHERE userId = :userId")
+    suspend fun deleteAllForUser(userId: String)
 }

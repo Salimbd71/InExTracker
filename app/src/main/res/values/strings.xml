@@ -17,8 +17,8 @@
     <string name="action_edit">Edit</string>
     <string name="action_search">Search…</string>
     <string name="action_filter">Filter</string>
-    <string name="action_export_csv">Export CSV</string>
-    <string name="action_export_pdf">Export Report</string>
+    <string name="action_export_csv">Export PDF</string>
+    <string name="action_export_pdf">Export PDF Report</string>
     <string name="action_sync_now">Sync Now</string>
     <string name="action_sign_in_google">Sign in with Google</string>
     <string name="action_sign_out">Sign Out</string>
