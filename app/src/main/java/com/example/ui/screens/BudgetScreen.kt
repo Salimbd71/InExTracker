@@ -112,8 +112,6 @@ fun BudgetScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
         )
 
-        AdMobBannerView()
-
         if (budgetsWithProgress.isEmpty()) {
             Box(
                 modifier = Modifier

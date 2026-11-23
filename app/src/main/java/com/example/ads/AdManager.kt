@@ -19,10 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
 object AdManager {
     private const val TAG = "AdManager"
 
-    // Official Google Test Ad Unit IDs (TEST ONLY)
-    // Replace with real production Ad Unit IDs before store release:
-    const val TEST_BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111"
-    const val TEST_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
+    // Production Ad Unit IDs
+    const val BANNER_AD_UNIT_ID = "ca-app-pub-3239967742299196/8831544140"
+    const val INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3239967742299196/6105308459"
     const val TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
 
     private var interstitialAd: InterstitialAd? = null
@@ -55,7 +54,7 @@ object AdManager {
             val adRequest = AdRequest.Builder().build()
             InterstitialAd.load(
                 context,
-                TEST_INTERSTITIAL_AD_UNIT_ID,
+                INTERSTITIAL_AD_UNIT_ID,
                 adRequest,
                 object : InterstitialAdLoadCallback() {
                     override fun onAdLoaded(ad: InterstitialAd) {

@@ -131,8 +131,6 @@ fun DebtKhataScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
         )
 
-        AdMobBannerView()
-
         // Tab Selector: পাওনা (Receivable) vs দেনা (Payable)
         TabRow(
             selectedTabIndex = selectedTab,

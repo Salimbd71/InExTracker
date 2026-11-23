@@ -1,4 +1,4 @@
-name: Build & Release APK
+name: Build & Release APK / AAB
 
 on:
   push:
@@ -6,14 +6,30 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: 'Release tag/version (e.g. v1.0.0). Leave empty for auto tag'
+      version:
+        description: 'Version (e.g. 1.0.1 or v1.0.1). Leave empty for auto'
         required: false
         default: ''
+        type: string
       run_tests:
-        description: 'Run unit tests before building APK'
+        description: 'Test units'
         required: false
         default: true
+        type: boolean
+      build_apk_debug:
+        description: 'Apk debug'
+        required: false
+        default: false
+        type: boolean
+      build_apk_release:
+        description: 'Apk release'
+        required: false
+        default: true
+        type: boolean
+      build_aab_release:
+        description: 'aab release'
+        required: false
+        default: false
         type: boolean
 
 permissions:
@@ -21,7 +37,7 @@ permissions:
 
 jobs:
   build-and-release:
-    name: Build & Release APK
+    name: Build & Release APK / AAB
     runs-on: ubuntu-latest
 
     steps:
@@ -99,29 +115,66 @@ jobs:
         shell: bash
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            TAG_NAME="${GITHUB_REF_NAME}"
-          elif [[ -n "${{ inputs.release_tag }}" ]]; then
-            TAG_NAME="${{ inputs.release_tag }}"
+            RAW_VER="${GITHUB_REF_NAME}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            RAW_VER="$(echo "${{ inputs.version }}" | xargs)"
           else
-            TAG_NAME="v1.0.${{ github.run_number }}"
+            RAW_VER="v1.0.${{ github.run_number }}"
           fi
-          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Configure google-services.json (if secret provided)
+          if [[ "$RAW_VER" == v* ]]; then
+            TAG_NAME="$RAW_VER"
+            VERSION_NAME="${RAW_VER#v}"
+          else
+            TAG_NAME="v${RAW_VER}"
+            VERSION_NAME="$RAW_VER"
+          fi
+
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure google-services.json (from Secrets if missing)
         shell: bash
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           if [[ -n "$GOOGLE_SERVICES_JSON" && ! -f "app/google-services.json" ]]; then
-            if [[ "$GOOGLE_SERVICES_JSON" == \{* ]]; then
+            TRIMMED="$(printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '\r' | sed 's/^[[:space:]]*//')"
+            if [[ "$TRIMMED" == \{* ]]; then
               printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
             else
-              printf '%s' "$GOOGLE_SERVICES_JSON" | base64 --decode > app/google-services.json
+              printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 --decode > app/google-services.json
             fi
             echo "created_google_services=true" >> "$GITHUB_ENV"
+            echo "Configured app/google-services.json from GOOGLE_SERVICES_JSON secret."
+          elif [[ ! -f "app/google-services.json" ]]; then
+            echo "::warning::app/google-services.json is missing and GOOGLE_SERVICES_JSON secret is empty."
+          fi
+
+      - name: Configure debug keystore
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_apk_debug }}
+        shell: bash
+        run: |
+          if [[ ! -f "debug.keystore" ]]; then
+            if [[ -f "debug.keystore.base64" ]]; then
+              tr -d '[:space:]' < debug.keystore.base64 | base64 --decode > debug.keystore
+            else
+              keytool -genkeypair -noprompt \
+                -keystore debug.keystore \
+                -alias androiddebugkey \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -storepass android \
+                -keypass android \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
+            echo "created_debug_keystore=true" >> "$GITHUB_ENV"
           fi
 
       - name: Configure release signing keystore
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_apk_release || inputs.build_aab_release }}
         id: keystore
         shell: bash
         env:
@@ -131,7 +184,7 @@ jobs:
         run: |
           KEYSTORE_FILE="${{ github.workspace }}/my-upload-key.jks"
           if [[ -n "$KEYSTORE_BASE64" ]]; then
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+            printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KEYSTORE_FILE"
             echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
             echo "STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
@@ -170,36 +223,76 @@ jobs:
           path: app/build/reports/tests/testDebugUnitTest/
           if-no-files-found: ignore
 
+      - name: Build Debug APK
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_apk_debug }}
+        run: >
+          gradle :app:assembleDebug
+          --no-daemon
+          --stacktrace
+          -PversionCode="${{ steps.meta.outputs.version_code }}"
+          -PversionName="${{ steps.meta.outputs.version_name }}"
+          -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Djava.awt.headless=true"
+
       - name: Build Release APK
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_apk_release }}
         run: >
           gradle :app:assembleRelease
           --no-daemon
           --stacktrace
+          -PversionCode="${{ steps.meta.outputs.version_code }}"
+          -PversionName="${{ steps.meta.outputs.version_name }}"
           -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Djava.awt.headless=true"
 
-      - name: Prepare release APK
-        id: apk
+      - name: Build Release AAB
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_aab_release) || github.event_name != 'workflow_dispatch' }}
+        run: >
+          gradle :app:bundleRelease
+          --no-daemon
+          --stacktrace
+          -PversionCode="${{ steps.meta.outputs.version_code }}"
+          -PversionName="${{ steps.meta.outputs.version_name }}"
+          -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Djava.awt.headless=true"
+
+      - name: Collect release outputs
+        id: outputs
         shell: bash
         run: |
-          mkdir -p release-apks
-          APK_SOURCE="app/build/outputs/apk/release/app-release.apk"
-          if [[ ! -f "$APK_SOURCE" ]]; then
-            echo "Error: Release APK not found at $APK_SOURCE"
-            exit 1
-          fi
-          APK_NAME="InExTracker-${{ steps.meta.outputs.tag_name }}.apk"
-          cp "$APK_SOURCE" "release-apks/${APK_NAME}"
-          echo "apk_path=release-apks/${APK_NAME}" >> "$GITHUB_OUTPUT"
-          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+          mkdir -p release-outputs
+          TAG_NAME="${{ steps.meta.outputs.tag_name }}"
+          COUNT=0
 
-      - name: Upload APK artifact
+          if [[ -f "app/build/outputs/apk/debug/app-debug.apk" ]]; then
+            cp "app/build/outputs/apk/debug/app-debug.apk" "release-outputs/InExTracker-${TAG_NAME}-debug.apk"
+            COUNT=$((COUNT + 1))
+          fi
+
+          if [[ -f "app/build/outputs/apk/release/app-release.apk" ]]; then
+            cp "app/build/outputs/apk/release/app-release.apk" "release-outputs/InExTracker-${TAG_NAME}-release.apk"
+            COUNT=$((COUNT + 1))
+          fi
+
+          if [[ -f "app/build/outputs/bundle/release/app-release.aab" ]]; then
+            cp "app/build/outputs/bundle/release/app-release.aab" "release-outputs/InExTracker-${TAG_NAME}-release.aab"
+            COUNT=$((COUNT + 1))
+          fi
+
+          if [[ "$COUNT" -gt 0 ]]; then
+            echo "has_outputs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_outputs=false" >> "$GITHUB_OUTPUT"
+          fi
+          ls -lh release-outputs/ || true
+
+      - name: Upload build artifacts
+        if: ${{ steps.outputs.outputs.has_outputs == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.apk.outputs.apk_name }}
-          path: ${{ steps.apk.outputs.apk_path }}
+          name: InExTracker-${{ steps.meta.outputs.tag_name }}
+          path: release-outputs/*
           retention-days: 30
 
       - name: Create GitHub Release
+        if: ${{ steps.outputs.outputs.has_outputs == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag_name }}
@@ -209,10 +302,10 @@ jobs:
           generate_release_notes: true
           body: |
             ### InEx Tracker (${{ steps.meta.outputs.tag_name }})
-            Download `${{ steps.apk.outputs.apk_name }}` from the Assets section below.
-            ${{ steps.keystore.outputs.used_temp_keystore == 'true' && '> **Note:** Signed with a temporary CI keystore. Add `KEYSTORE_BASE64`, `STORE_PASSWORD`, and `KEY_PASSWORD` in repository secrets for consistent release signing.' || '' }}
+            Download the built APK / AAB files from the Assets section below.
+            ${{ steps.keystore.outputs.used_temp_keystore == 'true' && '> **Note:** Release artifacts were signed with a temporary CI keystore. Add `KEYSTORE_BASE64`, `STORE_PASSWORD`, and `KEY_PASSWORD` in repository secrets for consistent release signing.' || '' }}
           files: |
-            ${{ steps.apk.outputs.apk_path }}
+            release-outputs/*
 
       - name: Clean up temporary secrets
         if: always()
@@ -221,4 +314,7 @@ jobs:
           rm -f "${{ github.workspace }}/my-upload-key.jks"
           if [[ "${{ env.created_google_services }}" == "true" ]]; then
             rm -f app/google-services.json
+          fi
+          if [[ "${{ env.created_debug_keystore }}" == "true" ]]; then
+            rm -f debug.keystore
           fi

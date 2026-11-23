@@ -690,7 +690,7 @@ fun AdMobBannerView(
             factory = { context ->
                 AdView(context).apply {
                     setAdSize(AdSize.BANNER)
-                    adUnitId = AdManager.TEST_BANNER_AD_UNIT_ID
+                    adUnitId = AdManager.BANNER_AD_UNIT_ID
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT

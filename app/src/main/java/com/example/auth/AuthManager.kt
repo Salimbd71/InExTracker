@@ -7,7 +7,10 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -128,32 +131,57 @@ class AuthManager(private val context: Context) {
         )
     }
 
-    suspend fun signInWithGoogle(webClientId: String? = null): Result<UserProfile> {
+    private fun resolveWebClientId(explicitClientId: String?): String? {
+        if (!explicitClientId.isNullOrBlank()) return explicitClientId
+        val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+        if (resId != 0) {
+            val value = context.getString(resId)
+            if (value.isNotBlank()) return value
+        }
+        return null
+    }
+
+    suspend fun signInWithGoogle(activityContext: Context = context, webClientId: String? = null): Result<UserProfile> {
         return try {
             val auth = firebaseAuth ?: return Result.failure(Exception("Firebase is not initialized"))
+            val clientId = resolveWebClientId(webClientId)
+                ?: return Result.failure(
+                    Exception("Google Sign-In কনফিগার করা হয়নি (default_web_client_id পাওয়া যায়নি)। অনুগ্রহ করে Firebase-এ Google Sign-In অন করে নতুন google-services.json যুক্ত করুন।")
+                )
 
             val rawNonce = UUID.randomUUID().toString()
             val md = MessageDigest.getInstance("SHA-256")
             val digest = md.digest(rawNonce.toByteArray())
             val hashedNonce = digest.fold("") { str, it -> str + "%02x".format(it) }
 
-            val clientId = if (!webClientId.isNullOrBlank()) webClientId else "1087964402636-serverclient.apps.googleusercontent.com"
-
-            val googleIdOption = GetGoogleIdOption.Builder()
-                .setFilterByAuthorizedAccounts(false)
-                .setServerClientId(clientId)
-                .setAutoSelectEnabled(false)
+            val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(clientId)
                 .setNonce(hashedNonce)
                 .build()
 
-            val request = GetCredentialRequest.Builder()
-                .addCredentialOption(googleIdOption)
+            val signInRequest = GetCredentialRequest.Builder()
+                .addCredentialOption(signInWithGoogleOption)
                 .build()
 
-            val result: GetCredentialResponse = credentialManager.getCredential(
-                request = request,
-                context = context
-            )
+            val result: GetCredentialResponse = try {
+                credentialManager.getCredential(
+                    request = signInRequest,
+                    context = activityContext
+                )
+            } catch (e: NoCredentialException) {
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(clientId)
+                    .setAutoSelectEnabled(false)
+                    .setNonce(hashedNonce)
+                    .build()
+                val fallbackRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+                credentialManager.getCredential(
+                    request = fallbackRequest,
+                    context = activityContext
+                )
+            }
 
             val credential = result.credential
             if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
@@ -182,6 +210,9 @@ class AuthManager(private val context: Context) {
             } else {
                 Result.failure(Exception("Unexpected credential type: ${credential.type}"))
             }
+        } catch (e: GetCredentialCancellationException) {
+            Log.d(tag, "Google Sign-In cancelled by user")
+            Result.failure(Exception("সাইন-ইন বাতিল করা হয়েছে"))
         } catch (e: Exception) {
             Log.e(tag, "Google Sign-In failed: ${e.message}", e)
             _authState.value = AuthState.Error(e.message ?: "Sign-in failed")

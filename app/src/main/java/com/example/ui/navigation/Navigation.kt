@@ -1,7 +1,9 @@
 package com.example.ui.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
@@ -40,6 +42,7 @@ import com.example.data.local.entity.DebtEntity
 import com.example.data.local.entity.DebtType
 import com.example.data.local.entity.TransactionEntity
 import com.example.data.local.entity.TransactionType
+import com.example.ui.components.AdMobBannerView
 import com.example.ui.components.SpeedDialFab
 import com.example.ui.screens.AddEditDebtSheet
 import com.example.ui.screens.AddEditTransactionSheet
@@ -108,43 +111,46 @@ fun AppNavigation(
         bottomBar = {
             val shouldShowBottomBar = bottomNavItems.any { it.route == currentRoute }
             if (shouldShowBottomBar) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
-                ) {
-                    bottomNavItems.forEach { screen ->
-                        val selected = currentRoute == screen.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 6.dp
+                    ) {
+                        bottomNavItems.forEach { screen ->
+                            val selected = currentRoute == screen.route
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = {
+                                    navController.navigate(screen.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = screen.icon,
-                                    contentDescription = screen.title
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = screen.title,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = PrimaryGreen,
-                                selectedTextColor = PrimaryGreen,
-                                indicatorColor = PrimaryGreen.copy(alpha = 0.15f)
-                            ),
-                            modifier = Modifier.testTag("nav_item_${screen.route}")
-                        )
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = screen.icon,
+                                        contentDescription = screen.title
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = screen.title,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = PrimaryGreen,
+                                    selectedTextColor = PrimaryGreen,
+                                    indicatorColor = PrimaryGreen.copy(alpha = 0.15f)
+                                ),
+                                modifier = Modifier.testTag("nav_item_${screen.route}")
+                            )
+                        }
                     }
+                    AdMobBannerView()
                 }
             }
         },

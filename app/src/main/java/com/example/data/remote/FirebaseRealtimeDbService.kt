@@ -27,7 +27,7 @@ class FirebaseRealtimeDbService {
             try {
                 FirebaseDatabase.getInstance()
             } catch (e: Throwable) {
-                FirebaseDatabase.getInstance("https://inextracker-slm-default-rtdb.firebaseio.com")
+                FirebaseDatabase.getInstance("https://inex-tracker-c3ecb-default-rtdb.asia-southeast1.firebasedatabase.app")
             }
         } catch (e: Throwable) {
             Log.w(tag, "FirebaseDatabase instance unavailable: ${e.message}")

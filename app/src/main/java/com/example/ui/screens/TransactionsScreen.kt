@@ -110,8 +110,6 @@ fun TransactionsScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
         )
 
-        AdMobBannerView()
-
         // Search Bar
         OutlinedTextField(
             value = searchQuery,

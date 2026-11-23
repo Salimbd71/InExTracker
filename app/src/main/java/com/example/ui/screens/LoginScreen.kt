@@ -196,7 +196,7 @@ fun LoginScreen(
                         if (isLoading) return@Button
                         isLoading = true
                         coroutineScope.launch {
-                            val result = viewModel.signInWithGoogle()
+                            val result = viewModel.signInWithGoogle(context)
                             isLoading = false
                             if (result.isSuccess) {
                                 Toast.makeText(context, "Google দিয়ে লগইন সফল হয়েছে!", Toast.LENGTH_SHORT).show()

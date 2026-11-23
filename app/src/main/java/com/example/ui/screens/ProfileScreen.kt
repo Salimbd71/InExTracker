@@ -117,8 +117,6 @@ fun ProfileScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
         )
 
-        AdMobBannerView()
-
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 90.dp, top = 8.dp),
@@ -203,7 +201,7 @@ fun ProfileScreen(
                                 onClick = {
                                     coroutineScope.launch {
                                         isSigningIn = true
-                                        val result = viewModel.signInWithGoogle()
+                                        val result = viewModel.signInWithGoogle(context)
                                         isSigningIn = false
                                         if (result.isFailure) {
                                             Toast.makeText(context, "গুগল সাইন-ইন সম্পন্ন করতে আপনার ডিভাইসে অ্যাকাউন্ট নির্বাচন করুন", Toast.LENGTH_LONG).show()

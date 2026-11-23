@@ -21,7 +21,7 @@ class HisabKhataApp : Application() {
             val db = try {
                 FirebaseDatabase.getInstance()
             } catch (e: Throwable) {
-                FirebaseDatabase.getInstance("https://inextracker-slm-default-rtdb.firebaseio.com")
+                FirebaseDatabase.getInstance("https://inex-tracker-c3ecb-default-rtdb.asia-southeast1.firebasedatabase.app")
             }
             db.setPersistenceEnabled(true)
         } catch (e: Throwable) {
@@ -39,10 +39,10 @@ class HisabKhataApp : Application() {
                 }
                 if (app == null) {
                     val fallbackOptions = FirebaseOptions.Builder()
-                        .setApplicationId("1:847332489788:android:inextracker")
+                        .setApplicationId("1:908865541753:android:c8284b10c7facc9f3126a8")
                         .setApiKey("AIzaSyDummyKeyForLocalOfflineFallbackMode")
-                        .setProjectId("inextracker-slm")
-                        .setDatabaseUrl("https://inextracker-slm-default-rtdb.firebaseio.com")
+                        .setProjectId("inex-tracker-c3ecb")
+                        .setDatabaseUrl("https://inex-tracker-c3ecb-default-rtdb.asia-southeast1.firebasedatabase.app")
                         .build()
                     FirebaseApp.initializeApp(this, fallbackOptions)
                 }
@@ -52,10 +52,10 @@ class HisabKhataApp : Application() {
             try {
                 if (FirebaseApp.getApps(this).isEmpty()) {
                     val fallbackOptions = FirebaseOptions.Builder()
-                        .setApplicationId("1:847332489788:android:inextracker")
+                        .setApplicationId("1:908865541753:android:c8284b10c7facc9f3126a8")
                         .setApiKey("AIzaSyDummyKeyForLocalOfflineFallbackMode")
-                        .setProjectId("inextracker-slm")
-                        .setDatabaseUrl("https://inextracker-slm-default-rtdb.firebaseio.com")
+                        .setProjectId("inex-tracker-c3ecb")
+                        .setDatabaseUrl("https://inex-tracker-c3ecb-default-rtdb.asia-southeast1.firebasedatabase.app")
                         .build()
                     FirebaseApp.initializeApp(this, fallbackOptions)
                 }

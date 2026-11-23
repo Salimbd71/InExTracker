@@ -318,8 +318,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         authManager.continueAsGuest()
     }
 
-    suspend fun signInWithGoogle(): Result<UserProfile> {
-        val result = authManager.signInWithGoogle()
+    suspend fun signInWithGoogle(activityContext: android.content.Context = getApplication()): Result<UserProfile> {
+        val result = authManager.signInWithGoogle(activityContext = activityContext)
         if (result.isSuccess) {
             val user = result.getOrNull()
             if (user != null) {
