@@ -223,6 +223,8 @@ jobs:
             echo "STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$EFFECTIVE_KEY_PASS" >> "$GITHUB_ENV"
             echo "used_temp_keystore=false" >> "$GITHUB_OUTPUT"
+            echo "=== Release Keystore Fingerprints (add to Firebase Console) ==="
+            keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$STORE_PASSWORD" -alias upload | grep -E "Alias name:|SHA1:|SHA256:" || true
           else
             echo "::warning::KEYSTORE_BASE64 secret not found. Generating a temporary signing keystore for this build. Configure KEYSTORE_BASE64, STORE_PASSWORD, and KEY_PASSWORD secrets for production releases."
             TEMP_PASS="inextracker-ci-temp"

@@ -1,6 +1,8 @@
 package com.example.auth
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
@@ -8,6 +10,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -19,7 +22,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
-import java.security.MessageDigest
 import java.util.UUID
 
 data class UserProfile(
@@ -141,6 +143,12 @@ class AuthManager(private val context: Context) {
         return null
     }
 
+    private tailrec fun Context.findActivity(): Activity? = when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
     suspend fun signInWithGoogle(activityContext: Context = context, webClientId: String? = null): Result<UserProfile> {
         return try {
             val auth = firebaseAuth ?: return Result.failure(Exception("Firebase is not initialized"))
@@ -149,13 +157,10 @@ class AuthManager(private val context: Context) {
                     Exception("Google Sign-In কনফিগার করা হয়নি (default_web_client_id পাওয়া যায়নি)। অনুগ্রহ করে Firebase-এ Google Sign-In অন করে নতুন google-services.json যুক্ত করুন।")
                 )
 
-            val rawNonce = UUID.randomUUID().toString()
-            val md = MessageDigest.getInstance("SHA-256")
-            val digest = md.digest(rawNonce.toByteArray())
-            val hashedNonce = digest.fold("") { str, it -> str + "%02x".format(it) }
+            val targetContext = activityContext.findActivity() ?: activityContext
+            val activeCredentialManager = CredentialManager.create(targetContext)
 
             val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(clientId)
-                .setNonce(hashedNonce)
                 .build()
 
             val signInRequest = GetCredentialRequest.Builder()
@@ -163,23 +168,22 @@ class AuthManager(private val context: Context) {
                 .build()
 
             val result: GetCredentialResponse = try {
-                credentialManager.getCredential(
+                activeCredentialManager.getCredential(
                     request = signInRequest,
-                    context = activityContext
+                    context = targetContext
                 )
             } catch (e: NoCredentialException) {
                 val googleIdOption = GetGoogleIdOption.Builder()
                     .setFilterByAuthorizedAccounts(false)
                     .setServerClientId(clientId)
                     .setAutoSelectEnabled(false)
-                    .setNonce(hashedNonce)
                     .build()
                 val fallbackRequest = GetCredentialRequest.Builder()
                     .addCredentialOption(googleIdOption)
                     .build()
-                credentialManager.getCredential(
+                activeCredentialManager.getCredential(
                     request = fallbackRequest,
-                    context = activityContext
+                    context = targetContext
                 )
             }
 
@@ -211,8 +215,19 @@ class AuthManager(private val context: Context) {
                 Result.failure(Exception("Unexpected credential type: ${credential.type}"))
             }
         } catch (e: GetCredentialCancellationException) {
-            Log.d(tag, "Google Sign-In cancelled by user")
-            Result.failure(Exception("সাইন-ইন বাতিল করা হয়েছে"))
+            val detail = e.errorMessage?.toString() ?: e.message
+            Log.w(tag, "Google Sign-In cancelled/aborted: $detail", e)
+            val msg = if (!detail.isNullOrBlank() && !detail.contains("cancelled by the user", ignoreCase = true) && !detail.contains("canceled by the user", ignoreCase = true)) {
+                "সাইন-ইন সম্পন্ন হয়নি ($detail)"
+            } else {
+                "সাইন-ইন বাতিল হয়েছে (Firebase-এ Release Keystore SHA-1/SHA-256 যোগ করা আছে কি না যাচাই করুন)"
+            }
+            Result.failure(Exception(msg))
+        } catch (e: GetCredentialException) {
+            val detail = e.errorMessage?.toString() ?: e.message ?: e.type
+            Log.e(tag, "Google Credential error (${e.type}): $detail", e)
+            _authState.value = AuthState.Error(detail)
+            Result.failure(Exception("Google Sign-In ত্রুটি: $detail"))
         } catch (e: Exception) {
             Log.e(tag, "Google Sign-In failed: ${e.message}", e)
             _authState.value = AuthState.Error(e.message ?: "Sign-in failed")

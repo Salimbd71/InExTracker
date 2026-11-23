@@ -204,7 +204,11 @@ fun ProfileScreen(
                                         val result = viewModel.signInWithGoogle(context)
                                         isSigningIn = false
                                         if (result.isFailure) {
-                                            Toast.makeText(context, "গুগল সাইন-ইন সম্পন্ন করতে আপনার ডিভাইসে অ্যাকাউন্ট নির্বাচন করুন", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(
+                                                context,
+                                                "লগইন সম্পন্ন হয়নি: ${result.exceptionOrNull()?.message ?: "Unknown"}",
+                                                Toast.LENGTH_LONG
+                                            ).show()
                                         }
                                     }
                                 },
