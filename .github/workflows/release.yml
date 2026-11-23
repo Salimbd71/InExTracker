@@ -144,10 +144,17 @@ jobs:
             if [[ "$TRIMMED" == \{* ]]; then
               printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
             else
-              printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 --decode > app/google-services.json
+              if ! printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '[:space:]' | base64 --decode > app/google-services.json; then
+                echo "::error::GOOGLE_SERVICES_JSON is neither valid JSON starting with '{' nor valid Base64."
+                exit 1
+              fi
+            fi
+            if ! python3 -m json.tool app/google-services.json >/dev/null 2>&1; then
+              echo "::error::Decoded app/google-services.json is not valid JSON. Please re-copy the full google-services.json file into the GOOGLE_SERVICES_JSON secret."
+              exit 1
             fi
             echo "created_google_services=true" >> "$GITHUB_ENV"
-            echo "Configured app/google-services.json from GOOGLE_SERVICES_JSON secret."
+            echo "Configured and validated app/google-services.json from GOOGLE_SERVICES_JSON secret."
           elif [[ ! -f "app/google-services.json" ]]; then
             echo "::warning::app/google-services.json is missing and GOOGLE_SERVICES_JSON secret is empty."
           fi
@@ -184,10 +191,37 @@ jobs:
         run: |
           KEYSTORE_FILE="${{ github.workspace }}/my-upload-key.jks"
           if [[ -n "$KEYSTORE_BASE64" ]]; then
-            printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KEYSTORE_FILE"
+            if ! printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KEYSTORE_FILE"; then
+              echo "::error::Failed to decode KEYSTORE_BASE64 secret. Ensure it is valid Base64."
+              exit 1
+            fi
+            EFFECTIVE_KEY_PASS="${KEY_PASSWORD:-$STORE_PASSWORD}"
+            if [[ -z "$STORE_PASSWORD" ]]; then
+              echo "::error::KEYSTORE_BASE64 is set, but STORE_PASSWORD secret is missing or empty."
+              exit 1
+            fi
+            if ! keytool -list -keystore "$KEYSTORE_FILE" -storepass "$STORE_PASSWORD" >/dev/null 2>&1; then
+              echo "::error::Cannot open keystore from KEYSTORE_BASE64 with STORE_PASSWORD. Verify both secrets match."
+              exit 1
+            fi
+            if ! keytool -list -keystore "$KEYSTORE_FILE" -storepass "$STORE_PASSWORD" -alias upload >/dev/null 2>&1; then
+              ACTUAL_ALIAS="$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$STORE_PASSWORD" | awk -F': ' '/^Alias name:/{print $2; exit}')"
+              if [[ -n "$ACTUAL_ALIAS" ]]; then
+                echo "::warning::Keystore alias was '$ACTUAL_ALIAS' instead of 'upload'. Normalizing temporary CI keystore alias to 'upload'."
+                keytool -changealias \
+                  -keystore "$KEYSTORE_FILE" \
+                  -storepass "$STORE_PASSWORD" \
+                  -keypass "$EFFECTIVE_KEY_PASS" \
+                  -alias "$ACTUAL_ALIAS" \
+                  -destalias upload
+              else
+                echo "::error::No key alias found in keystore."
+                exit 1
+              fi
+            fi
             echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
             echo "STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$EFFECTIVE_KEY_PASS" >> "$GITHUB_ENV"
             echo "used_temp_keystore=false" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::KEYSTORE_BASE64 secret not found. Generating a temporary signing keystore for this build. Configure KEYSTORE_BASE64, STORE_PASSWORD, and KEY_PASSWORD secrets for production releases."
