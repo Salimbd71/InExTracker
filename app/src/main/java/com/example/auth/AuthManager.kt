@@ -17,7 +17,9 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.OAuthProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -149,15 +151,68 @@ class AuthManager(private val context: Context) {
         else -> null
     }
 
-    suspend fun signInWithGoogle(activityContext: Context = context, webClientId: String? = null): Result<UserProfile> {
-        return try {
-            val auth = firebaseAuth ?: return Result.failure(Exception("Firebase is not initialized"))
-            val clientId = resolveWebClientId(webClientId)
-                ?: return Result.failure(
-                    Exception("Google Sign-In কনফিগার করা হয়নি (default_web_client_id পাওয়া যায়নি)। অনুগ্রহ করে Firebase-এ Google Sign-In অন করে নতুন google-services.json যুক্ত করুন।")
-                )
+    private fun completeFirebaseUserLogin(
+        user: FirebaseUser,
+        fallbackDisplayName: String? = null,
+        fallbackEmail: String? = null,
+        fallbackPhotoUrl: String? = null
+    ): UserProfile {
+        prefs.edit()
+            .putBoolean("is_guest_mode", false)
+            .putBoolean("has_completed_onboarding", true)
+            .apply()
+        val profile = UserProfile(
+            uid = user.uid,
+            displayName = user.displayName ?: fallbackDisplayName ?: "User",
+            email = user.email ?: fallbackEmail ?: "",
+            photoUrl = user.photoUrl?.toString() ?: fallbackPhotoUrl,
+            isAnonymous = false,
+            creationTimestamp = user.metadata?.creationTimestamp ?: System.currentTimeMillis()
+        )
+        _authState.value = AuthState.Authenticated(profile)
+        return profile
+    }
 
-            val targetContext = activityContext.findActivity() ?: activityContext
+    private suspend fun signInWithGoogleOAuthFallback(
+        auth: FirebaseAuth,
+        activity: Activity?
+    ): Result<UserProfile> {
+        if (activity == null) {
+            return Result.failure(Exception("Google Sign-In fallback requires an Activity context."))
+        }
+        return try {
+            val pendingTask = auth.pendingAuthResult
+            val authResult = if (pendingTask != null) {
+                pendingTask.await()
+            } else {
+                val provider = OAuthProvider.newBuilder("google.com")
+                    .setScopes(listOf("email", "profile"))
+                    .addCustomParameter("prompt", "select_account")
+                    .build()
+                auth.startActivityForSignInWithProvider(activity, provider).await()
+            }
+            val user = authResult.user
+            if (user != null) {
+                Result.success(completeFirebaseUserLogin(user))
+            } else {
+                Result.failure(Exception("Firebase user is null after Google OAuth sign-in."))
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Google OAuth fallback failed: ${e.message}", e)
+            _authState.value = AuthState.Error(e.message ?: "Sign-in failed")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun signInWithGoogle(activityContext: Context = context, webClientId: String? = null): Result<UserProfile> {
+        val auth = firebaseAuth ?: return Result.failure(Exception("Firebase is not initialized"))
+        val activity = activityContext.findActivity()
+        val targetContext = activity ?: activityContext
+
+        return try {
+            val clientId = resolveWebClientId(webClientId)
+                ?: return signInWithGoogleOAuthFallback(auth, activity)
+
             val activeCredentialManager = CredentialManager.create(targetContext)
 
             val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(clientId)
@@ -194,19 +249,12 @@ class AuthManager(private val context: Context) {
                 val authResult = auth.signInWithCredential(authCredential).await()
                 val user = authResult.user
                 if (user != null) {
-                    prefs.edit()
-                        .putBoolean("is_guest_mode", false)
-                        .putBoolean("has_completed_onboarding", true)
-                        .apply()
-                    val profile = UserProfile(
-                        uid = user.uid,
-                        displayName = user.displayName ?: googleIdTokenCredential.displayName ?: "User",
-                        email = user.email ?: googleIdTokenCredential.id,
-                        photoUrl = user.photoUrl?.toString() ?: googleIdTokenCredential.profilePictureUri?.toString(),
-                        isAnonymous = false,
-                        creationTimestamp = user.metadata?.creationTimestamp ?: System.currentTimeMillis()
+                    val profile = completeFirebaseUserLogin(
+                        user = user,
+                        fallbackDisplayName = googleIdTokenCredential.displayName,
+                        fallbackEmail = googleIdTokenCredential.id,
+                        fallbackPhotoUrl = googleIdTokenCredential.profilePictureUri?.toString()
                     )
-                    _authState.value = AuthState.Authenticated(profile)
                     Result.success(profile)
                 } else {
                     Result.failure(Exception("Firebase user is null after Google authentication."))
@@ -215,19 +263,26 @@ class AuthManager(private val context: Context) {
                 Result.failure(Exception("Unexpected credential type: ${credential.type}"))
             }
         } catch (e: GetCredentialCancellationException) {
-            val detail = e.errorMessage?.toString() ?: e.message
+            val detail = e.errorMessage?.toString() ?: e.message ?: ""
             Log.w(tag, "Google Sign-In cancelled/aborted: $detail", e)
-            val msg = if (!detail.isNullOrBlank() && !detail.contains("cancelled by the user", ignoreCase = true) && !detail.contains("canceled by the user", ignoreCase = true)) {
-                "সাইন-ইন সম্পন্ন হয়নি ($detail)"
+            val isExplicitUserCancel =
+                detail.contains("cancelled by the user", ignoreCase = true) ||
+                    detail.contains("canceled by the user", ignoreCase = true)
+            if (!isExplicitUserCancel && activity != null) {
+                Log.i(tag, "Falling back to Firebase Google OAuth web flow due to CredentialManager error: $detail")
+                signInWithGoogleOAuthFallback(auth, activity)
             } else {
-                "সাইন-ইন বাতিল হয়েছে (Firebase-এ Release Keystore SHA-1/SHA-256 যোগ করা আছে কি না যাচাই করুন)"
+                Result.failure(Exception("সাইন-ইন বাতিল করা হয়েছে"))
             }
-            Result.failure(Exception(msg))
         } catch (e: GetCredentialException) {
             val detail = e.errorMessage?.toString() ?: e.message ?: e.type
-            Log.e(tag, "Google Credential error (${e.type}): $detail", e)
-            _authState.value = AuthState.Error(detail)
-            Result.failure(Exception("Google Sign-In ত্রুটি: $detail"))
+            Log.w(tag, "Google Credential error (${e.type}): $detail — trying OAuth fallback", e)
+            if (activity != null) {
+                signInWithGoogleOAuthFallback(auth, activity)
+            } else {
+                _authState.value = AuthState.Error(detail)
+                Result.failure(Exception("Google Sign-In ত্রুটি: $detail"))
+            }
         } catch (e: Exception) {
             Log.e(tag, "Google Sign-In failed: ${e.message}", e)
             _authState.value = AuthState.Error(e.message ?: "Sign-in failed")
