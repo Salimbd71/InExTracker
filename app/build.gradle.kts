@@ -11,12 +11,12 @@ plugins {
 
 android {
   namespace = "com.SLM"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 35
 
   defaultConfig {
     applicationId = "com.slm.inextracker"
     minSdk = 24
-    targetSdk = 36
+    targetSdk = 35
     versionCode = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1
     versionName = (project.findProperty("versionName") as? String)?.takeIf { it.isNotBlank() } ?: "1.0"
 

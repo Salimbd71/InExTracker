@@ -102,7 +102,7 @@ jobs:
           grep -qxF "84831b9409646a918e30573bab4c9c91346d8abd" "$SDK_DIR/licenses/android-sdk-preview-license" 2>/dev/null || echo "84831b9409646a918e30573bab4c9c91346d8abd" >> "$SDK_DIR/licenses/android-sdk-preview-license"
           { yes || true; } | "$SDKMANAGER" --sdk_root="$SDK_DIR" --licenses >/dev/null 2>&1 || true
 
-          "$SDKMANAGER" --sdk_root="$SDK_DIR" "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          "$SDKMANAGER" --sdk_root="$SDK_DIR" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "platforms;android-36" "build-tools;36.0.0" || true
           "$SDKMANAGER" --sdk_root="$SDK_DIR" "platforms;android-36.1" >/dev/null 2>&1 || true
 
       - name: Set up Gradle
