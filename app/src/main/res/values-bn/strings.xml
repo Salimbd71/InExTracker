@@ -62,4 +62,5 @@
     <string name="wallet_nagad">নগদ (Nagad)</string>
     <string name="wallet_card">কার্ড (Card)</string>
     <string name="wallet_other">অন্যান্য</string>
+    <string name="widget_description">আজকের আয়-ব্যয়, ব্যালেন্স ও দ্রুত এন্ট্রি বাটন দেখায়</string>
 </resources>

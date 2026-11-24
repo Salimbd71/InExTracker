@@ -61,4 +61,5 @@
     <string name="wallet_nagad">Nagad</string>
     <string name="wallet_card">Card</string>
     <string name="wallet_other">Other</string>
+    <string name="widget_description">Shows balance, today\'s income &amp; expense, and quick add buttons</string>
 </resources>

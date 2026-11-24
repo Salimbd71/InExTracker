@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Frosted translucent glass base so wallpaper shines through -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="135"
+                android:startColor="#B30D2B3E"
+                android:centerColor="#99114D4A"
+                android:endColor="#BA0B1E2D"
+                android:type="linear" />
+            <corners android:radius="22dp" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#7AFFFFFF" />
+        </shape>
+    </item>
+    <!-- Soft specular top glass reflection -->
+    <item
+        android:left="1.5dp"
+        android:right="1.5dp"
+        android:top="1.5dp"
+        android:bottom="44dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#33FFFFFF"
+                android:centerColor="#12FFFFFF"
+                android:endColor="#00FFFFFF"
+                android:type="linear" />
+            <corners
+                android:topLeftRadius="20.5dp"
+                android:topRightRadius="20.5dp"
+                android:bottomLeftRadius="8dp"
+                android:bottomRightRadius="8dp" />
+        </shape>
+    </item>
+</layer-list>
