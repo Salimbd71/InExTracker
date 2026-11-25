@@ -2,14 +2,18 @@ package com.SLM.ui.screens
 
 import android.Manifest
 import android.app.TimePickerDialog
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,11 +26,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
@@ -40,6 +46,7 @@ import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.OutlinedButton
 import androidx.core.content.ContextCompat
 import androidx.compose.material3.AlertDialog
@@ -55,9 +62,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +78,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -76,15 +89,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.SLM.BuildConfig
+import com.SLM.R
 import com.SLM.auth.AuthState
 import com.SLM.ui.components.PremiumAppHeader
 import com.SLM.ui.components.SyncStatusChip
 import com.SLM.ui.components.UserAvatar
 import com.SLM.ui.i18n.LocalAppLanguage
 import com.SLM.ui.i18n.LocalAppStrings
+import com.SLM.ui.theme.AccentGold
 import com.SLM.ui.theme.ExpenseRed
+import com.SLM.ui.theme.FacebookBlue
 import com.SLM.ui.theme.IncomeGreen
 import com.SLM.ui.theme.PrimaryGreen
+import com.SLM.ui.theme.WhatsAppGreen
 import com.SLM.ui.viewmodel.MainViewModel
 import com.SLM.utils.DateUtils
 import kotlinx.coroutines.launch
@@ -744,6 +761,104 @@ fun ProfileScreen(
                         fontWeight = FontWeight.SemiBold,
                         color = PrimaryGreen
                     )
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FooterIconAction(
+                            tint = PrimaryGreen,
+                            contentDescription = stringResource(R.string.cd_call_developer),
+                            testTag = "footer_call_button",
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_DIAL, Uri.parse("tel:01737462871"))
+                                    )
+                                }.onFailure {
+                                    Toast.makeText(context, strings.actionNotSupportedToast, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Call,
+                                contentDescription = null,
+                                tint = PrimaryGreen,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        FooterIconAction(
+                            tint = WhatsAppGreen,
+                            contentDescription = stringResource(R.string.cd_whatsapp_developer),
+                            testTag = "footer_whatsapp_button",
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/8801737462871"))
+                                    )
+                                }.onFailure {
+                                    Toast.makeText(context, strings.actionNotSupportedToast, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_whatsapp),
+                                contentDescription = null,
+                                tint = WhatsAppGreen,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        FooterIconAction(
+                            tint = FacebookBlue,
+                            contentDescription = stringResource(R.string.cd_facebook_developer),
+                            testTag = "footer_facebook_button",
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse("https://fb.com/salim.naogaon"))
+                                    )
+                                }.onFailure {
+                                    Toast.makeText(context, strings.actionNotSupportedToast, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_facebook),
+                                contentDescription = null,
+                                tint = FacebookBlue,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        FooterIconAction(
+                            tint = AccentGold,
+                            contentDescription = stringResource(R.string.cd_share_app),
+                            testTag = "footer_share_button",
+                            onClick = {
+                                runCatching {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, strings.appName)
+                                        putExtra(Intent.EXTRA_TEXT, strings.shareAppMessage)
+                                    }
+                                    context.startActivity(
+                                        Intent.createChooser(shareIntent, strings.shareAppChooserTitle)
+                                    )
+                                }.onFailure {
+                                    Toast.makeText(context, strings.actionNotSupportedToast, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null,
+                                tint = AccentGold,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
                     Text(
                         text = strings.footerSecurityNote,
                         style = MaterialTheme.typography.labelSmall,
@@ -898,5 +1013,30 @@ fun ProfileScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun FooterIconAction(
+    tint: Color,
+    contentDescription: String,
+    testTag: String,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = tint.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.28f)),
+        modifier = Modifier
+            .size(48.dp)
+            .minimumInteractiveComponentSize()
+            .semantics { this.contentDescription = contentDescription }
+            .testTag(testTag)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            icon()
+        }
     }
 }

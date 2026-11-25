@@ -264,7 +264,20 @@ data class AppStrings(
     val splashPermGrantedBadge: String,
     val splashPermAllowAction: String,
     val splashPermScopedReadyBadge: String
-)
+) {
+    val shareAppChooserTitle: String
+        get() = if (langCode == "en") "Share InEx Tracker" else "InEx Tracker শেয়ার করুন"
+
+    val shareAppMessage: String
+        get() = if (langCode == "en") {
+            "InEx Tracker — Smart, fast & secure Income, Expense, Debt & Budget Manager with Real-time Cloud Sync and PDF Reports.\n\nDownload Latest APK:\nhttps://github.com/Salimbd71/InExTracker/releases/latest/download/InExTracker-release.apk"
+        } else {
+            "InEx Tracker — আপনার দৈনন্দিন আয়, ব্যয়, দেনা-পাওনা ও বাজেট হিসাব রাখার স্মার্ট, দ্রুত ও সুরক্ষিত অ্যাপ (রিয়েলটাইম ক্লাউড সিঙ্ক ও PDF রিপোর্টসহ)।\n\nসর্বশেষ ভার্সন ডাউনলোড করুন:\nhttps://github.com/Salimbd71/InExTracker/releases/latest/download/InExTracker-release.apk"
+        }
+
+    val actionNotSupportedToast: String
+        get() = if (langCode == "en") "No compatible app found on device" else "এই কাজটি করার জন্য উপযুক্ত অ্যাপ পাওয়া যায়নি"
+}
 
 val BnStrings = AppStrings(
     langCode = "bn",

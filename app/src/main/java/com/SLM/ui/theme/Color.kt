@@ -28,3 +28,8 @@ val SurfaceDark = Color(0xFF13222B)
 val SurfaceVariantDark = Color(0xFF1E323D)
 val TextPrimaryDark = Color(0xFFF1F5F9)
 val TextSecondaryDark = Color(0xFF94A3B8)
+
+// Social & Contact Action Accents
+val WhatsAppGreen = Color(0xFF25D366)
+val FacebookBlue = Color(0xFF1877F2)
+

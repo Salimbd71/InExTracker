@@ -62,4 +62,8 @@
     <string name="wallet_card">Card</string>
     <string name="wallet_other">Other</string>
     <string name="widget_description">Shows balance, today\'s income &amp; expense, and quick add buttons</string>
+    <string name="cd_call_developer">Call Developer</string>
+    <string name="cd_whatsapp_developer">WhatsApp Developer</string>
+    <string name="cd_facebook_developer">Developer Facebook</string>
+    <string name="cd_share_app">Share InEx Tracker</string>
 </resources>
